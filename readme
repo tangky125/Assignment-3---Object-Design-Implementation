@@ -1,0 +1,27 @@
+StatusLifecycle v1 is live - C#, .NET 8, compiles. (Domain/StatusLifecycle.cs)
+
+Contract rules:
+
+The 9 statuses live in enum Status (Domain/Status.cs) - never use strings, never invent a 10th.
+Before changing a request/delivery status, every class does:
+if (!_lifecycle.CanTransition(cur, next)) throw new InvalidOperationException(_lifecycle.ExplainRefusal(cur, next));
+then set the status. No direct status writes without the check.
+Birth states: new DeliveryRequest starts at Status.Requested; new Delivery (created on quote acceptance) starts at Status.Accepted.
+Need a transition that's not in the table (e.g. Scheduled → Cancelled)? Message me - I own the table, nobody forks it.
+Next up from me: DeliveryEvent, then Delivery + payment stack.
+Build order:
+
+Reuben - UI can read any object's Status property now for display.
+Clarice - apply rule 2 inside DeliveryRequest.MarkQuoted() and accept/reject paths.
+Maleesha - AllocationCoordinator applies rule 2 on Accepted → Scheduled.
+Everyone - run dotnet build once today; screenshot your first successful build for the report.
+
+Assignment3/                ← dotnet new console -n Assignment3
+├── Program.cs              ← boot point (Maleesha wires DmsInitialiser here)
+├── Domain/                 ← Ky: Status, StatusLifecycle, Delivery, Payment*, DeliveryEvent
+├── Quoting/                ← Clarice
+├── Staff/                  ← Maleesha
+├── Storage/                ← Maleesha (bonus: C# has System.Text.Json BUILT-IN - zero installs)
+├── Ui/                     ← Reuben
+├── Data/                   ← JSON files at runtime
+└── Docs/                   ← change log + screenshots
