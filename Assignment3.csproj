@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Dms</RootNamespace>
+    <AssemblyName>Assignment3</AssemblyName>
+    <!-- Coding standard: Microsoft C# coding conventions, checked by the .NET analyzers and .editorconfig. -->
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The Vue source is built separately (npm run build) into wwwroot; runtime data and docs are not compiled. -->
+    <Compile Remove="WebUi/**;Data/**;Docs/**" />
+    <Content Remove="WebUi/**;Data/**;Docs/**" />
+    <None Remove="WebUi/**;Data/**;Docs/**" />
+  </ItemGroup>
+
+</Project>
