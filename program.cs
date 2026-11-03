@@ -14,6 +14,14 @@ using Dms.Api.Endpoints;
 // once the domain classes are ready. Nothing else in this file needs to change.
 const string Url = "http://localhost:5080";
 
+// Self-check harness: dotnet run --selftest runs the domain checks, prints PASS/FAIL per line and exits.
+// Kept above the web host so no server or port is started for a self-check run.
+if (args.Contains("--selftest", StringComparer.Ordinal))
+{
+    Dms.Domain.SelfTest.Run();
+    return;
+}
+
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(Url);
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
