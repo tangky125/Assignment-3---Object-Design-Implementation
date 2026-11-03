@@ -1,0 +1,78 @@
+# Coding standard for the DMS: Microsoft C# coding conventions and .NET naming guidelines.
+# https://learn.microsoft.com/dotnet/csharp/fundamentals/coding-style/coding-conventions
+# https://learn.microsoft.com/dotnet/csharp/fundamentals/coding-style/identifier-names
+# Check with:  dotnet format --verify-no-changes
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.cs]
+indent_size = 4
+
+# Usings and namespaces
+dotnet_sort_system_directives_first = true
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_using_directive_placement = outside_namespace:warning
+
+# Braces and layout (Allman style, as in the Microsoft conventions)
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_prefer_braces = true:warning
+
+# var only when the type is obvious
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_elsewhere = false:suggestion
+
+# Naming: PascalCase for types and members, IPascalCase for interfaces, _camelCase for private fields
+dotnet_naming_rule.interfaces_start_with_i.symbols = interface_symbols
+dotnet_naming_rule.interfaces_start_with_i.style = prefix_i_style
+dotnet_naming_rule.interfaces_start_with_i.severity = warning
+dotnet_naming_symbols.interface_symbols.applicable_kinds = interface
+dotnet_naming_style.prefix_i_style.required_prefix = I
+dotnet_naming_style.prefix_i_style.capitalization = pascal_case
+
+dotnet_naming_rule.types_are_pascal.symbols = type_symbols
+dotnet_naming_rule.types_are_pascal.style = pascal_style
+dotnet_naming_rule.types_are_pascal.severity = warning
+dotnet_naming_symbols.type_symbols.applicable_kinds = class, struct, enum, delegate, record
+dotnet_naming_style.pascal_style.capitalization = pascal_case
+
+dotnet_naming_rule.members_are_pascal.symbols = member_symbols
+dotnet_naming_rule.members_are_pascal.style = pascal_style
+dotnet_naming_rule.members_are_pascal.severity = warning
+dotnet_naming_symbols.member_symbols.applicable_kinds = method, property, event
+
+dotnet_naming_rule.private_fields_underscore.symbols = private_field_symbols
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel_style
+dotnet_naming_rule.private_fields_underscore.severity = warning
+dotnet_naming_symbols.private_field_symbols.applicable_kinds = field
+dotnet_naming_symbols.private_field_symbols.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel_style.required_prefix = _
+dotnet_naming_style.underscore_camel_style.capitalization = camel_case
+
+dotnet_naming_rule.private_static_readonly_pascal.symbols = private_static_readonly_symbols
+dotnet_naming_rule.private_static_readonly_pascal.style = pascal_style
+dotnet_naming_rule.private_static_readonly_pascal.severity = warning
+dotnet_naming_symbols.private_static_readonly_symbols.applicable_kinds = field
+dotnet_naming_symbols.private_static_readonly_symbols.applicable_accessibilities = private
+dotnet_naming_symbols.private_static_readonly_symbols.required_modifiers = static, readonly
+
+dotnet_naming_rule.constants_pascal.symbols = constant_symbols
+dotnet_naming_rule.constants_pascal.style = pascal_style
+dotnet_naming_rule.constants_pascal.severity = warning
+dotnet_naming_symbols.constant_symbols.applicable_kinds = field
+dotnet_naming_symbols.constant_symbols.required_modifiers = const
+
+# User-facing strings are intentionally not localised (single-language business); this rule would flag every literal.
+dotnet_diagnostic.CA1303.severity = none
+
+# Menus and tables are built once per screen draw; inline arrays keep each screen readable,
+# so the micro-optimisation "hoist constant arrays to static fields" is not applied.
+dotnet_diagnostic.CA1861.severity = none

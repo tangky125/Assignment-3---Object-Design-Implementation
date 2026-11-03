@@ -1,0 +1,35 @@
+{
+  "name": "dms-web-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Your Order We Deliver - Delivery Management System web user interface (Vue 3 + TypeScript)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --build --force && vite build",
+    "type-check": "vue-tsc --build --force",
+    "lint": "eslint . && prettier --check src tests",
+    "format": "prettier --write src tests",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "vue": "3.5.13",
+    "vue-router": "4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.1",
+    "@vitejs/plugin-vue": "5.2.1",
+    "@vue/eslint-config-prettier": "10.1.0",
+    "@vue/eslint-config-typescript": "14.1.4",
+    "@vue/test-utils": "2.4.6",
+    "@vue/tsconfig": "0.7.0",
+    "eslint": "9.16.0",
+    "eslint-plugin-vue": "9.32.0",
+    "jsdom": "25.0.1",
+    "prettier": "3.4.2",
+    "typescript": "5.6.3",
+    "vite": "5.4.11",
+    "vitest": "2.1.8",
+    "vue-tsc": "2.1.10"
+  }
+}
