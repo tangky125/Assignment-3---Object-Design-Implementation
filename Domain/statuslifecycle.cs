@@ -4,15 +4,15 @@ public class StatusLifecycle
 {
     private static readonly Dictionary<Status, HashSet<Status>> Legal = new()
     {
-        [Status.Requested]      = new HashSet<Status> { Status.Quoted },
-        [Status.Quoted]         = new HashSet<Status> { Status.Accepted, Status.Rejected, Status.Requested },
-        [Status.Accepted]       = new HashSet<Status> { Status.Scheduled, Status.Cancelled },
-        [Status.Scheduled]      = new HashSet<Status> { Status.Collected, Status.DeliveryFailed },
-        [Status.Collected]      = new HashSet<Status> { Status.Delivered, Status.DeliveryFailed, Status.Cancelled },
+        [Status.Requested] = new HashSet<Status> { Status.Quoted },
+        [Status.Quoted] = new HashSet<Status> { Status.Accepted, Status.Rejected, Status.Requested },
+        [Status.Accepted] = new HashSet<Status> { Status.Scheduled, Status.Cancelled },
+        [Status.Scheduled] = new HashSet<Status> { Status.Collected, Status.DeliveryFailed },
+        [Status.Collected] = new HashSet<Status> { Status.Delivered, Status.DeliveryFailed, Status.Cancelled },
         [Status.DeliveryFailed] = new HashSet<Status> { Status.Scheduled },
-        [Status.Delivered]      = new HashSet<Status>(),  // final
-        [Status.Cancelled]      = new HashSet<Status>(),  // final
-        [Status.Rejected]       = new HashSet<Status>()   // final
+        [Status.Delivered] = new HashSet<Status>(), // final
+        [Status.Cancelled] = new HashSet<Status>(), // final
+        [Status.Rejected] = new HashSet<Status>() // final
     };
 
     public bool CanTransition(Status from, Status to)
