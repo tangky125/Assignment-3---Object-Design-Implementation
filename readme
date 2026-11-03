@@ -38,19 +38,28 @@ Log in as ben / pass: demo123, type ref/job DMS-2026-0006
 
     ## Key flows (screenshots in `/Image`)
 
-1. **Sign in** → `frontpage.png` → `signin.png`  
+## Key flows
+
+1. **Sign in**
+   ![Front page](Image/frontpage.png)
+   ![Sign in page](Image/signin.png)
    Enter credentials (e.g. `ben` / `demo123`) on the landing page.
 
-2. **Staff dashboard** → `staffpage.png`  
+2. **Staff dashboard**
+   ![Staff page](Image/staffpage.png)
    Delivery staff view shows allocated jobs and availability controls.
 
-3. **Job list** → `joblist.png`  
+3. **Job list**
+   ![Job list](Image/joblist.png)
    Office staff see the queue of requests awaiting quote or allocation.
 
-4. **Execute delivery** → `deliveryjob.png`  
+4. **Execute delivery**
+   ![Delivery job](Image/deliveryjob.png)
    Driver ticks parcels, takes payment (cash/card), records hand-over or failure.
 
-5. **Track delivery** → `track.png` → `trackresult.png`  
+5. **Track delivery**
+   ![Track search](Image/track.png)
+   ![Track result](Image/trackresult.png)
    Customer or office staff search by reference and view status history.
 
 ## Contract rules
