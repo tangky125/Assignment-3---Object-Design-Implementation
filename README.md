@@ -36,9 +36,7 @@ Log in as ben / pass: demo123, type ref/job DMS-2026-0006
     Data/                       JSON at runtime
     Docs/                       change log, integration guide, screenshots
 
-    ## Key flows (screenshots in `/Image`)
-
-## Key flows
+## Key flows (screenshots in `Image/`)
 
 1. **Sign in**
    ![Front page](Image/frontpage.png)
