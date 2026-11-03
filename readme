@@ -7,7 +7,9 @@
     dotnet run                      # http://localhost:5080 (built UI is served from wwwroot/)
     cd WebUi && npm run build       # only needed after changing the UI
 
-Demo accounts are listed on the Help page; password `demo123` (e.g. `ben` = delivery staff).
+## Test inputs
+Delivery Staff:
+Log in as ben / pass: demo123, type ref/job DMS-2026-0006
 
 ## Checks
 
