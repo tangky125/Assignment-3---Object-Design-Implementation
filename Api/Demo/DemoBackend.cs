@@ -567,6 +567,43 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
         return viewer.CustomerId == r.CustomerId ? ViewerLevel.Customer : ViewerLevel.None;
     }
 
+    // ---------------------------------------------------------------- read-model mirror for real areas
+
+    /// <summary>
+    /// Copies the result of a real Area 2 command into this stand-in's request record, so tracking,
+    /// customer lists and the allocation queue (still answered here) show the new status, quote
+    /// versions and history. The real domain already checked the move, so no lifecycle check here.
+    /// </summary>
+    /// <param name="reference">The request reference.</param>
+    /// <param name="status">The status the domain moved the request to.</param>
+    /// <param name="quotes">Every quote version, as the UI sees them.</param>
+    /// <param name="newEvents">History entries the command added.</param>
+    public void MirrorQuoteState(string reference, Status status, IReadOnlyList<QuoteView> quotes, IReadOnlyList<EventView> newEvents)
+    {
+        ArgumentNullException.ThrowIfNull(quotes);
+        ArgumentNullException.ThrowIfNull(newEvents);
+        RequestRecord? r = Get(reference);
+        if (r is null)
+        {
+            return;
+        }
+
+        r.Quotes.Clear();
+        foreach (QuoteView q in quotes)
+        {
+            r.Quotes.Add(new QuoteRecord(q.Version, q.PickupWindow, q.DeliveryWindow, q.IssuedAt)
+            {
+                Price = q.Price,
+                AdjustReason = q.AdjustReason,
+                AwaitingOwner = q.AwaitingOwnerApproval,
+                Outcome = q.IsExpired ? "Issued, awaiting decision" : q.Outcome,
+            });
+        }
+
+        r.Status = status;
+        r.Events.AddRange(newEvents);
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static string Hash(string password) =>

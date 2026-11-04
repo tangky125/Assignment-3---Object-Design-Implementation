@@ -28,6 +28,11 @@ Suggested pattern: one small adapter class in your own folder, e.g.
 `Quoting/QuoteServiceAdapter.cs : IQuoteService`, that calls your classes and converts results into
 the records in `Api/Contracts/Views.cs`.
 
+Done so far: Area 4 (`Api/Controllers/DeliveryServiceAdapter.cs`) and Area 2
+(`Api/Controllers/QuoteServiceAdapter.cs` over the classes in `Quoting/`). Both use a registry
+interface (`IDeliveryRegistry`, `IQuoteRegistry`) for storage, so the adapter does not change when
+the demo is replaced.
+
 ## Rules the UI relies on
 
 1. **Refusals are results, not crashes.** When a business rule says no (expired quote, staff member
