@@ -84,6 +84,7 @@ public sealed record AddressPair(AddressInput Pickup, AddressInput Destination, 
 public sealed record TimeWindowView(DateTime Start, DateTime End);
 
 /// <summary>One line in a list of requests.</summary>
+/// <param name="Tag">Why the row is in a work queue (see <see cref="QueueTags"/>); null elsewhere.</param>
 public sealed record RequestSummary(
     string Reference,
     string CustomerName,
@@ -93,7 +94,21 @@ public sealed record RequestSummary(
     string DestinationSuburb,
     int ParcelCount,
     TimeWindowView? PickupWindow,
-    string? Note);
+    string? Note,
+    string? Tag = null);
+
+/// <summary>The tags shown on rows of the quote queue.</summary>
+public static class QueueTags
+{
+    /// <summary>Never quoted.</summary>
+    public const string New = "New";
+
+    /// <summary>The customer asked for a revised quote.</summary>
+    public const string Revision = "Revision";
+
+    /// <summary>The last quote expired without a decision.</summary>
+    public const string Expired = "Expired";
+}
 
 /// <summary>One parcel on a request.</summary>
 public sealed record ParcelView(
@@ -104,6 +119,9 @@ public sealed record ParcelView(
     bool Collected);
 
 /// <summary>A quote version as shown to users.</summary>
+/// <param name="Decision">Pending, Accepted, Rejected, RevisionRequested or Expired.</param>
+/// <param name="DecisionReason">The customer's reason for a rejection or a revision request.</param>
+/// <param name="ConfirmedVia">How the customer gave a decision that office staff recorded.</param>
 public sealed record QuoteView(
     string Reference,
     int Version,
@@ -115,7 +133,10 @@ public sealed record QuoteView(
     DateTime ValidUntil,
     bool IsExpired,
     bool AwaitingOwnerApproval,
-    string Outcome);
+    string Outcome,
+    string? Decision = null,
+    string? DecisionReason = null,
+    string? ConfirmedVia = null);
 
 /// <summary>A payment attempt (no card data is ever held: A1 A6).</summary>
 public sealed record PaymentView(DateTime At, string Method, decimal Amount, bool Successful, string Outcome);

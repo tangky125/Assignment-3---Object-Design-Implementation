@@ -1,4 +1,4 @@
- # Area 2: quoting and the customer's decision — interpretation decisions
+# Area 2: quoting and the customer's decision — interpretation decisions
 
 Area 2 (`IQuoteService`: A1 Task 2 Prepare Quote, Task 3 Accept or Reject). A2 classes:
 Quote, ServiceArea, PricingPolicy, ZonePricingPolicy, OwnerApprovedPricingPolicy, SystemConfiguration,
@@ -43,3 +43,15 @@ plus QuoteNegotiator (extracted, see below). Files: `Quoting/` (domain, namespac
 
 - `dotnet run --selftest`: 77 checks (30 Area 4 + 47 Area 2), PASS/FAIL per line.
 - Browser walkthrough of every Area 2 flow (14 screenshots in `Docs/Screenshots/Area2/`): expired quote refused; queue oldest first; real proposal $36.00 with breakdown; wrong price / missing reason rejected; undo; issue v1; customer asks for revision; v2 at an adjusted price; acceptance with versions and history; accepted request appears in the allocation queue; rejection closes the request; out-of-area quote held, owner prices it at $75.00; office records the customer's phone acceptance.
+
+## Usability changes after team testing
+
+Raised while testing the Area 2 flows as office staff:
+
+- **Why a request is in the quote queue.** `AwaitingQuote` now tags every row `New` (never quoted), `Revision` (the customer asked for a revised quote) or `Expired` (the last quote ran out with no decision), and the note gives the detail, e.g. "Revision asked: price too high". The tag travels in a new optional `RequestSummary.Tag`; rows still come oldest first.
+- **The previous quote on the prepare page.** When a request comes back after a revision or an expiry, *Prepare a quote* shows the previous version's price and the customer's reason above the price field. `QuoteView` gained optional `Decision`, `DecisionReason` and `ConfirmedVia` so the UI does not have to parse the outcome text.
+- **Work counts.** The navigation shows how many requests are waiting (Quotes, Owner approvals) and the main menu summarises the queue ("3 requests waiting for a quote: 1 new, 1 revision asked, 1 expired."). Counts come from the same queues (`WebUi/src/session/workCounts.ts`) and refresh on every page change and once a minute; screen readers hear "Quotes, 3 waiting".
+- **How the customer confirmed.** A1 Task 3 subtask 2 records whether the customer or office staff made the decision. When office staff record one, they must now also say how the customer gave it (phone call, email, in person, or other with a description, plus who and when). `Quote.RecordDecision` refuses a staff-recorded decision without it, `Quote.DecisionConfirmedVia` keeps it, and it appears in the quote outcome and the history ("recorded by office staff; confirmed by phone call: Jane Citizen, 10:15"). Customers deciding online are never asked. `IQuoteService.Accept/Reject/RequestRevision` take the extra `confirmedVia` argument, and the endpoints read it from the request body.
+- **Replay fix (DA9).** The negotiator used to remember a command's replay key before checking it, so a refused command (e.g. a missing reason) that was corrected and resent within the same minute was silently ignored. It now remembers the key only once the command succeeds; a self-test check covers it.
+
+Evidence: `--selftest` 82 checks (30 Area 4 + 52 Area 2); UI type-check, lint and 17 UI tests pass; a browser walkthrough of the four changes (screenshots 15-21 in `Docs/Screenshots/Area2/`) and a rerun of the original 14-step walkthrough, both with no failures and no console errors.

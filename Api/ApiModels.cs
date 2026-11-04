@@ -19,8 +19,11 @@ public sealed record SessionView(string Username, string DisplayName, IReadOnlyL
 /// <summary>Returned after a successful sign-in.</summary>
 public sealed record SignInResponse(string Token, SessionView User);
 
-/// <summary>A reason typed by the user (reject, revise, cancel, failure).</summary>
-public sealed record ReasonBody(string? Reason);
+/// <summary>
+/// A reason typed by the user (reject, revise, cancel, failure). For a quote decision that office
+/// staff record for a customer, <paramref name="ConfirmedVia"/> says how the customer gave it.
+/// </summary>
+public sealed record ReasonBody(string? Reason, string? ConfirmedVia = null);
 
 /// <summary>A new customer.</summary>
 public sealed record NewCustomerBody(string? Name, string? Phone, string? Email);

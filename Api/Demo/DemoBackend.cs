@@ -235,7 +235,7 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
         Get(reference)?.Quotes.Select(q => ToView(reference, q)).ToList() ?? new List<QuoteView>();
 
     /// <inheritdoc/>
-    public OperationResult Accept(string reference, UserSession by) => Command(reference, r =>
+    public OperationResult Accept(string reference, UserSession by, string? confirmedVia) => Command(reference, r =>
     {
         QuoteRecord? q = r.CurrentQuote;
         if (r.Status != Status.Quoted || q is null)
@@ -256,7 +256,7 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
     });
 
     /// <inheritdoc/>
-    public OperationResult Reject(string reference, string reason, UserSession by) => Command(reference, r =>
+    public OperationResult Reject(string reference, string reason, UserSession by, string? confirmedVia) => Command(reference, r =>
     {
         QuoteRecord q = r.CurrentQuote ?? throw new InvalidOperationException("There is no quote to reject.");
         q.Outcome = $"Rejected: {reason}";
@@ -265,7 +265,7 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
     });
 
     /// <inheritdoc/>
-    public OperationResult RequestRevision(string reference, string reason, UserSession by) => Command(reference, r =>
+    public OperationResult RequestRevision(string reference, string reason, UserSession by, string? confirmedVia) => Command(reference, r =>
     {
         QuoteRecord q = r.CurrentQuote ?? throw new InvalidOperationException("There is no quote to revise.");
         q.Outcome = $"Revision asked: {reason}";

@@ -5,17 +5,27 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { hasRole, isOffice, isStaff, session } from '@/session/session'
 import { takeFlash, type Message } from '@/session/flash'
+import { quoteQueueSummary, refreshWorkCounts, workCounts } from '@/session/workCounts'
 import MessageBanner from '@/components/MessageBanner.vue'
 
 interface Tile {
   to: string
   title: string
   text: string
+  /** Work waiting behind this tile, e.g. "3 requests waiting for a quote: 2 new, 1 revision asked." */
+  waiting?: string | null
 }
 
 const message = ref<Message | null>(null)
 onMounted(() => {
   message.value = takeFlash()
+  void refreshWorkCounts()
+})
+
+const ownerWaiting = computed(() => {
+  const n = workCounts.ownerApprovals
+  if (n === null) return null
+  return n === 0 ? 'Nothing waiting for an owner.' : `${n} quote${n === 1 ? '' : 's'} waiting for your price.`
 })
 
 const tiles = computed<Tile[]>(() => {
@@ -42,7 +52,12 @@ const tiles = computed<Tile[]>(() => {
         title: 'Log a request for a phone customer',
         text: 'Find or register the customer, then enter the request.',
       },
-      { to: '/quotes', title: 'Prepare quotes', text: 'Requests waiting for a quote, oldest first.' },
+      {
+        to: '/quotes',
+        title: 'Prepare quotes',
+        text: 'Requests waiting for a quote, oldest first.',
+        waiting: quoteQueueSummary(),
+      },
       {
         to: '/decisions',
         title: "Record a customer's quote decision",
@@ -60,6 +75,7 @@ const tiles = computed<Tile[]>(() => {
       to: '/owner/approvals',
       title: 'Price out-of-area quotes',
       text: 'Quotes held until an owner sets the price.',
+      waiting: ownerWaiting.value,
     })
   }
   if (hasRole('DeliveryStaff')) {
@@ -91,9 +107,15 @@ const tiles = computed<Tile[]>(() => {
     @dismiss="message = null"
   />
   <div class="grid-3">
-    <RouterLink v-for="tile in tiles" :key="tile.title" :to="tile.to" class="tile card">
+    <RouterLink
+      v-for="tile in tiles"
+      :key="tile.title"
+      :to="tile.to"
+      :class="['tile', 'card', { 'tile-busy': tile.waiting && !tile.waiting.startsWith('Nothing') }]"
+    >
       <h2>{{ tile.title }}</h2>
       <p class="muted">{{ tile.text }}</p>
+      <p v-if="tile.waiting" class="waiting" data-testid="tile-waiting">{{ tile.waiting }}</p>
     </RouterLink>
   </div>
 </template>
@@ -114,5 +136,22 @@ const tiles = computed<Tile[]>(() => {
 
 .tile h2 {
   color: var(--brand);
+}
+
+.waiting {
+  margin: 0.6rem 0 0;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.tile-busy {
+  border-top-color: var(--accent);
+}
+
+.tile-busy .waiting {
+  color: var(--notice);
+  background: var(--notice-bg);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
 }
 </style>

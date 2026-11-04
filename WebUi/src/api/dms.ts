@@ -62,11 +62,13 @@ export const quoteApi = {
   requestsFor: (customerId: string): Promise<RequestSummary[]> =>
     get(`/api/customers/${encodeURIComponent(customerId)}/requests`),
   history: (reference: string): Promise<QuoteView[]> => get(`/api/requests/${ref(reference)}/quotes`),
-  accept: (reference: string): Promise<OperationResult> => post(`/api/requests/${ref(reference)}/accept`),
-  reject: (reference: string, reason: string): Promise<OperationResult> =>
-    post(`/api/requests/${ref(reference)}/reject`, { reason }),
-  revise: (reference: string, reason: string): Promise<OperationResult> =>
-    post(`/api/requests/${ref(reference)}/revise`, { reason }),
+  /** `confirmedVia` is how the customer gave the decision; required when office staff record it. */
+  accept: (reference: string, confirmedVia: string | null = null): Promise<OperationResult> =>
+    post(`/api/requests/${ref(reference)}/accept`, { reason: null, confirmedVia }),
+  reject: (reference: string, reason: string, confirmedVia: string | null = null): Promise<OperationResult> =>
+    post(`/api/requests/${ref(reference)}/reject`, { reason, confirmedVia }),
+  revise: (reference: string, reason: string, confirmedVia: string | null = null): Promise<OperationResult> =>
+    post(`/api/requests/${ref(reference)}/revise`, { reason, confirmedVia }),
 }
 
 /** Area 3: allocate delivery staff. */

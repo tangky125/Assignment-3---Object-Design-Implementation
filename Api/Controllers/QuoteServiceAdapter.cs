@@ -83,7 +83,8 @@ public sealed class QuoteServiceAdapter : IQuoteService
             ExpireIfDue(row.Reference, context);
             if (context.Negotiator.IsWaitingForQuote)
             {
-                waiting.Add(row with { Status = context.Negotiator.Status, Note = $"waiting {Age(row.LoggedAt)}" });
+                (string tag, string note) = QueueTag(context.Negotiator, row.LoggedAt);
+                waiting.Add(row with { Status = context.Negotiator.Status, Note = note, Tag = tag });
             }
         }
 
@@ -167,7 +168,7 @@ public sealed class QuoteServiceAdapter : IQuoteService
     }
 
     /// <inheritdoc/>
-    public OperationResult Accept(string reference, UserSession by)
+    public OperationResult Accept(string reference, UserSession by, string? confirmedVia)
     {
         ArgumentNullException.ThrowIfNull(reference);
         ArgumentNullException.ThrowIfNull(by);
@@ -188,7 +189,7 @@ public sealed class QuoteServiceAdapter : IQuoteService
         int version = quote?.Version ?? 0;
         return Run(reference, context, by, () =>
         {
-            Delivery delivery = negotiator.Accept(EventId(reference, $"accept-v{version}", by), Actor(by), !IsCustomer(by), Now);
+            Delivery delivery = negotiator.Accept(EventId(reference, $"accept-v{version}", by), Actor(by), !IsCustomer(by), Now, ConfirmedVia(by, confirmedVia));
             decimal due = negotiator.CurrentQuote!.FinalPrice!.Value;
             _registry.DeliveryCreated(reference, delivery, due);
             return $"Quote accepted. {reference} is now Accepted and waiting for a delivery staff member. "
@@ -197,7 +198,7 @@ public sealed class QuoteServiceAdapter : IQuoteService
     }
 
     /// <inheritdoc/>
-    public OperationResult Reject(string reference, string reason, UserSession by)
+    public OperationResult Reject(string reference, string reason, UserSession by, string? confirmedVia)
     {
         ArgumentNullException.ThrowIfNull(reference);
         ArgumentNullException.ThrowIfNull(by);
@@ -209,13 +210,13 @@ public sealed class QuoteServiceAdapter : IQuoteService
         int version = context.Negotiator.CurrentQuote?.Version ?? 0;
         return Run(reference, context, by, () =>
         {
-            context.Negotiator.Reject(EventId(reference, $"reject-v{version}", by), Actor(by), !IsCustomer(by), Now, reason ?? string.Empty);
+            context.Negotiator.Reject(EventId(reference, $"reject-v{version}", by), Actor(by), !IsCustomer(by), Now, reason ?? string.Empty, ConfirmedVia(by, confirmedVia));
             return $"Quote rejected. {reference} is closed.";
         });
     }
 
     /// <inheritdoc/>
-    public OperationResult RequestRevision(string reference, string reason, UserSession by)
+    public OperationResult RequestRevision(string reference, string reason, UserSession by, string? confirmedVia)
     {
         ArgumentNullException.ThrowIfNull(reference);
         ArgumentNullException.ThrowIfNull(by);
@@ -227,7 +228,7 @@ public sealed class QuoteServiceAdapter : IQuoteService
         int version = context.Negotiator.CurrentQuote?.Version ?? 0;
         return Run(reference, context, by, () =>
         {
-            context.Negotiator.RequestRevision(EventId(reference, $"revise-v{version}", by), Actor(by), !IsCustomer(by), Now, reason ?? string.Empty);
+            context.Negotiator.RequestRevision(EventId(reference, $"revise-v{version}", by), Actor(by), !IsCustomer(by), Now, reason ?? string.Empty, ConfirmedVia(by, confirmedVia));
             return $"Revision requested. {reference} is back in the office queue; quote v{version} is kept on record.";
         });
     }
@@ -291,7 +292,10 @@ public sealed class QuoteServiceAdapter : IQuoteService
             quote.ValidUntil.LocalDateTime,
             expired,
             quote.AwaitingOwnerApproval,
-            OutcomeText(quote, expired));
+            OutcomeText(quote, expired),
+            quote.Decision.ToString(),
+            quote.DecisionReason,
+            quote.DecisionConfirmedVia);
     }
 
     private static string OutcomeText(Quote quote, bool expired)
@@ -304,12 +308,38 @@ public sealed class QuoteServiceAdapter : IQuoteService
         return quote.Decision switch
         {
             QuoteDecision.Pending => expired ? "Expired (no decision)" : "Issued, awaiting decision",
-            QuoteDecision.Accepted => quote.DecisionRecordedByStaff ? "Accepted (recorded by office staff)" : "Accepted by customer",
-            QuoteDecision.Rejected => $"Rejected: {quote.DecisionReason}",
-            QuoteDecision.RevisionRequested => $"Revision asked: {quote.DecisionReason}",
+            QuoteDecision.Accepted => quote.DecisionRecordedByStaff ? $"Accepted (recorded by office staff{Via(quote)})" : "Accepted by customer",
+            QuoteDecision.Rejected => $"Rejected: {quote.DecisionReason}{StaffNote(quote)}",
+            QuoteDecision.RevisionRequested => $"Revision asked: {quote.DecisionReason}{StaffNote(quote)}",
             QuoteDecision.Expired => "Expired (no decision)",
             _ => quote.Decision.ToString(),
         };
+    }
+
+    private static string Via(Quote quote) =>
+        quote.DecisionConfirmedVia is { } via ? $"; confirmed by {via}" : string.Empty;
+
+    private static string StaffNote(Quote quote) =>
+        quote.DecisionRecordedByStaff ? $" (recorded by office staff{Via(quote)})" : string.Empty;
+
+    /// <summary>
+    /// The confirmation note is only kept for decisions staff record; a customer deciding online
+    /// never needs one. Longer notes are refused so the history stays readable.
+    /// </summary>
+    private static string? ConfirmedVia(UserSession by, string? confirmedVia)
+    {
+        if (IsCustomer(by))
+        {
+            return null;
+        }
+
+        string? trimmed = confirmedVia?.Trim();
+        if (trimmed is { Length: > 0 and < 3 } || trimmed?.Length > 120)
+        {
+            throw new ArgumentException("Describe how the customer confirmed in 3 to 120 characters, e.g. \"phone call from Jane at 10:15\".");
+        }
+
+        return trimmed;
     }
 
     private static TimeWindowView ToView(TimeWindow window) => new(window.Start.LocalDateTime, window.End.LocalDateTime);
@@ -323,6 +353,21 @@ public sealed class QuoteServiceAdapter : IQuoteService
     private static bool IsCustomer(UserSession by) => by.Has(UserRole.Customer) && !by.IsStaff;
 
     private static string Actor(UserSession by) => by.StaffId ?? by.CustomerId ?? by.Username;
+
+    /// <summary>
+    /// Why a request is in the quote queue, so office staff can see what is new and what needs a
+    /// second look: never quoted, the customer asked for a revision, or the last quote expired.
+    /// </summary>
+    private (string Tag, string Note) QueueTag(QuoteNegotiator negotiator, DateTime loggedAt)
+    {
+        Quote? last = negotiator.CurrentQuote;
+        return last?.Decision switch
+        {
+            QuoteDecision.RevisionRequested => (QueueTags.Revision, $"Revision asked: {last.DecisionReason}"),
+            QuoteDecision.Expired => (QueueTags.Expired, $"Quote v{last.Version} expired with no decision"),
+            _ => (QueueTags.New, $"waiting {Age(loggedAt)}"),
+        };
+    }
 
     private string Age(DateTime since)
     {

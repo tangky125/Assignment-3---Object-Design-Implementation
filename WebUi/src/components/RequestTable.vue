@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // A list of requests. Each row opens the screen given by `linkTo`.
 import { RouterLink, type RouteLocationRaw } from 'vue-router'
-import type { RequestSummary } from '@/api/types'
+import type { QueueTag, RequestSummary } from '@/api/types'
 import StatusBadge from './StatusBadge.vue'
 import { shortWhen } from '@/utils/format'
+
+const tagText: Record<QueueTag, string> = { New: 'New', Revision: 'Revision', Expired: 'Expired' }
 
 defineProps<{
   rows: RequestSummary[]
@@ -47,7 +49,17 @@ defineProps<{
           <td :data-label="timeHeader ?? 'Logged / pickup'">
             {{ shortWhen(row.pickupWindow ? row.pickupWindow.start : row.loggedAt) }}
           </td>
-          <td data-label="Note" class="muted">{{ row.note ?? '' }}</td>
+          <td data-label="Note">
+            <div class="note">
+              <span
+                v-if="row.tag"
+                :class="['badge', `badge-tag-${row.tag.toLowerCase()}`]"
+                data-testid="queue-tag"
+                >{{ tagText[row.tag] }}</span
+              >
+              <span :class="row.tag === 'Revision' ? 'note-strong' : 'muted'">{{ row.note ?? '' }}</span>
+            </div>
+          </td>
           <td class="action-cell">
             <RouterLink
               class="btn btn-secondary btn-row"
@@ -67,6 +79,17 @@ defineProps<{
 </template>
 
 <style scoped>
+.note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.note-strong {
+  font-weight: 600;
+}
+
 .btn-row {
   min-height: 2.1rem;
   padding: 0.25rem 0.8rem;

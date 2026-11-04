@@ -118,16 +118,17 @@ public static class RequestEndpoints
         app.MapGet("/api/requests/{reference}/quotes", (string reference, HttpContext context, ApiAccess access, DmsServices services) =>
             access.RequireOfficeOrOwnRequest(context, reference, out _) ?? Results.Ok(services.Quotes.QuoteHistory(reference)));
 
-        app.MapPost("/api/requests/{reference}/accept", (string reference, HttpContext context, ApiAccess access, DmsServices services) =>
-            access.RequireOfficeOrOwnRequest(context, reference, out UserSession session) ?? Results.Ok(services.Quotes.Accept(reference, session)));
+        app.MapPost("/api/requests/{reference}/accept", (string reference, ReasonBody? body, HttpContext context, ApiAccess access, DmsServices services) =>
+            access.RequireOfficeOrOwnRequest(context, reference, out UserSession session)
+            ?? Results.Ok(services.Quotes.Accept(reference, session, body?.ConfirmedVia)));
 
         app.MapPost("/api/requests/{reference}/reject", (string reference, ReasonBody body, HttpContext context, ApiAccess access, DmsServices services) =>
             access.RequireOfficeOrOwnRequest(context, reference, out UserSession session)
-            ?? WithReason(body, reason => services.Quotes.Reject(reference, reason, session)));
+            ?? WithReason(body, reason => services.Quotes.Reject(reference, reason, session, body.ConfirmedVia)));
 
         app.MapPost("/api/requests/{reference}/revise", (string reference, ReasonBody body, HttpContext context, ApiAccess access, DmsServices services) =>
             access.RequireOfficeOrOwnRequest(context, reference, out UserSession session)
-            ?? WithReason(body, reason => services.Quotes.RequestRevision(reference, reason, session)));
+            ?? WithReason(body, reason => services.Quotes.RequestRevision(reference, reason, session, body.ConfirmedVia)));
 
         app.MapPost("/api/requests/{reference}/cancel", (string reference, ReasonBody body, HttpContext context, ApiAccess access, DmsServices services) =>
             access.RequireOfficeOrOwnRequest(context, reference, out UserSession session)

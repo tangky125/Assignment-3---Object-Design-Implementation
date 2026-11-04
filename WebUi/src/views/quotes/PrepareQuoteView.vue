@@ -5,7 +5,7 @@
 import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { quoteApi, trackingApi } from '@/api/dms'
-import type { QuoteProposal, RequestDetail } from '@/api/types'
+import type { QuoteProposal, QuoteView, RequestDetail } from '@/api/types'
 import { flash } from '@/session/flash'
 import * as rules from '@/validation/rules'
 import { handlingText, isoToLocalInput, localInputToServer, money, when } from '@/utils/format'
@@ -21,6 +21,14 @@ const reference = String(route.params.reference).toUpperCase()
 
 const proposal = ref<QuoteProposal | null>(null)
 const detail = ref<RequestDetail | null>(null)
+const versions = ref<QuoteView[]>([])
+
+// The version this quote replaces, when the customer asked for a revision or it expired, so the
+// reason is in front of office staff before they set the new price (A1 Task 2 variant 3a).
+const previous = computed(() => {
+  const last = versions.value[versions.value.length - 1]
+  return last && (last.decision === 'RevisionRequested' || last.decision === 'Expired') ? last : null
+})
 const loadError = ref<string | null>(null)
 const problem = ref<string | null>(null)
 const notice = ref<string | null>(null)
@@ -58,8 +66,13 @@ function reset(): void {
 
 async function load(): Promise<void> {
   try {
-    const [result, tracking] = await Promise.all([quoteApi.propose(reference), trackingApi.find(reference)])
+    const [result, tracking, history] = await Promise.all([
+      quoteApi.propose(reference),
+      trackingApi.find(reference),
+      quoteApi.history(reference).catch(() => [] as QuoteView[]),
+    ])
     detail.value = tracking.detail
+    versions.value = history
     if (!result.succeeded || !result.value) {
       loadError.value = result.message
       return
@@ -209,7 +222,26 @@ async function leave(): Promise<void> {
         <span class="label">Note:</span> the destination is outside the service area, so an owner must set the
         price.
       </p>
-      <template v-else>
+      <section v-if="previous" class="previous" aria-labelledby="previous-title" data-testid="previous-quote">
+        <h3 id="previous-title">
+          {{
+            previous.decision === 'RevisionRequested'
+              ? 'The customer asked for a revision'
+              : 'The last quote expired'
+          }}
+        </h3>
+        <p>
+          Previous quote v{{ previous.version }}:
+          <strong>{{ previous.price === null ? 'no price' : money(previous.price) }}</strong>
+          <template v-if="previous.adjustReason"> (adjusted: {{ previous.adjustReason }})</template>.
+        </p>
+        <p v-if="previous.decision === 'RevisionRequested'">
+          Customer asked: <strong class="asked">&ldquo;{{ previous.decisionReason }}&rdquo;</strong>
+          <span v-if="previous.confirmedVia" class="muted"> (by {{ previous.confirmedVia }})</span>
+        </p>
+        <p v-else>It expired on {{ when(previous.validUntil) }} without a decision from the customer.</p>
+      </section>
+      <template v-if="!proposal.needsOwnerApproval">
         <p>
           Proposed price: <strong>{{ money(proposal.proposedPrice) }}</strong>
         </p>
@@ -343,6 +375,27 @@ async function leave(): Promise<void> {
   margin: 0;
   padding-left: 1.2rem;
   color: var(--muted);
+}
+
+.previous {
+  border-left: 5px solid var(--accent);
+  background: #fffaf0;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.previous h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.previous p {
+  margin: 0.2rem 0;
+}
+
+.asked {
+  color: var(--brand-dark);
 }
 
 .legend {

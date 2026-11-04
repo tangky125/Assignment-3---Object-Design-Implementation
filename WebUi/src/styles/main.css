@@ -412,6 +412,23 @@ tbody tr:hover {
   background: var(--notice-bg);
 }
 
+/* Why a request is in the quote queue */
+.badge-tag-new {
+  color: #1c4f8a;
+  background: #e6effa;
+}
+
+.badge-tag-revision {
+  color: var(--brand-dark);
+  background: var(--accent);
+  border-color: #c98317;
+}
+
+.badge-tag-expired {
+  color: var(--notice);
+  background: var(--notice-bg);
+}
+
 /* ---------- confirm box ---------- */
 .confirm {
   border: 2px solid var(--accent);

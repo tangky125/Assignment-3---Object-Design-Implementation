@@ -12,7 +12,7 @@ Delivery Staff:
 Log in as ben / pass: demo123, type ref/job DMS-2026-0006
 
 Quoting (Area 2):
-Office staff: olivia / demo123, open **Quote queue** (DMS-2026-0001 prices at $36.00; DMS-2026-0004 is out of area and goes to the owner).
+Office staff: olivia / demo123, open **Quote queue** (DMS-2026-0001 prices at $36.00; DMS-2026-0002 is out of area and goes to the owner).
 Owner: sam / demo123, open **Owner approval** to price an out-of-area quote.
 Customer: jane / demo123, open **My requests** to accept, reject or ask for a revision.
 
@@ -22,7 +22,7 @@ Customer: jane / demo123, open **My requests** to accept, reject or ask for a re
 |---|---|
 | `dotnet build` | Compiles: **Build succeeded, 0 warnings, 0 errors** |
 | `dotnet format --verify-no-changes` | Code follows `.editorconfig` (Microsoft conventions) |
-| `dotnet run --selftest` | 77 domain checks (30 Area 4 + 47 Area 2), PASS/FAIL per line, no web server started |
+| `dotnet run --selftest` | 82 domain checks (30 Area 4 + 52 Area 2), PASS/FAIL per line, no web server started |
 | `cd WebUi && npm run build` | TypeScript type-check and UI build |
 | `cd WebUi && npm test` | UI tests |
 
