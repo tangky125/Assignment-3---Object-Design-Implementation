@@ -1,4 +1,4 @@
-# Area 2: quoting and the customer's decision — interpretation decisions
+ # Area 2: quoting and the customer's decision — interpretation decisions
 
 Area 2 (`IQuoteService`: A1 Task 2 Prepare Quote, Task 3 Accept or Reject). A2 classes:
 Quote, ServiceArea, PricingPolicy, ZonePricingPolicy, OwnerApprovedPricingPolicy, SystemConfiguration,
