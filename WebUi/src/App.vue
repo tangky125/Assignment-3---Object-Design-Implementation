@@ -1,9 +1,30 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { hasRole, isOffice, isStaff, roleText, session, signOut } from '@/session/session'
+import { refreshWorkCounts, workCounts } from '@/session/workCounts'
 
 const router = useRouter()
+const route = useRoute()
+
+// Work counts on the navigation bar: refreshed on every page change and once a minute.
+watch(
+  () => [route.fullPath, session.user?.username],
+  () => {
+    if (session.user) void refreshWorkCounts()
+  },
+)
+let timer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  timer = setInterval(() => {
+    if (session.user) void refreshWorkCounts()
+  }, 60_000)
+})
+onBeforeUnmount(() => clearInterval(timer))
+
+function countLabel(name: string, count: number | null, what: string): string {
+  return count ? `${name}, ${count} ${what}` : name
+}
 
 const roles = computed(() => (session.user ? session.user.roles.map(roleText).join(', ') : ''))
 
@@ -42,11 +63,33 @@ async function onSignOut(): Promise<void> {
       <div class="container nav-inner">
         <RouterLink to="/dashboard">Main menu</RouterLink>
         <RouterLink v-if="hasRole('Customer') || isOffice" to="/requests/new">Log request</RouterLink>
-        <RouterLink v-if="hasRole('Customer')" to="/my/requests">My requests</RouterLink>
-        <RouterLink v-if="isOffice" to="/quotes">Quotes</RouterLink>
+        <RouterLink
+          v-if="hasRole('Customer')"
+          to="/my/requests"
+          :aria-label="countLabel('My requests', workCounts.decisions, 'waiting for your decision')"
+        >
+          My requests<span v-if="workCounts.decisions" class="count" aria-hidden="true">{{
+            workCounts.decisions
+          }}</span>
+        </RouterLink>
+        <RouterLink
+          v-if="isOffice"
+          to="/quotes"
+          :aria-label="countLabel('Quotes', workCounts.quotes, 'waiting')"
+        >
+          Quotes<span v-if="workCounts.quotes" class="count" aria-hidden="true">{{ workCounts.quotes }}</span>
+        </RouterLink>
         <RouterLink v-if="isOffice" to="/decisions">Customer decisions</RouterLink>
         <RouterLink v-if="isOffice" to="/allocation">Allocation</RouterLink>
-        <RouterLink v-if="hasRole('Owner')" to="/owner/approvals">Owner approvals</RouterLink>
+        <RouterLink
+          v-if="hasRole('Owner')"
+          to="/owner/approvals"
+          :aria-label="countLabel('Owner approvals', workCounts.ownerApprovals, 'waiting')"
+        >
+          Owner approvals<span v-if="workCounts.ownerApprovals" class="count" aria-hidden="true">{{
+            workCounts.ownerApprovals
+          }}</span>
+        </RouterLink>
         <RouterLink v-if="hasRole('DeliveryStaff')" to="/jobs">My jobs</RouterLink>
         <RouterLink v-if="isStaff" to="/search">Track / search</RouterLink>
         <RouterLink v-if="!isStaff" to="/track">Track</RouterLink>
@@ -150,6 +193,20 @@ async function onSignOut(): Promise<void> {
   font-size: 0.95rem;
   padding: 0.2rem 0;
   border-bottom: 3px solid transparent;
+}
+
+.site-nav .count {
+  display: inline-block;
+  min-width: 1.4rem;
+  margin-left: 0.35rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--brand-dark);
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1.4rem;
+  text-align: center;
 }
 
 .site-nav a:hover,

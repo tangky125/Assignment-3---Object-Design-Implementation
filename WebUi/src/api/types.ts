@@ -106,7 +106,11 @@ export interface RequestSummary {
   parcelCount: number
   pickupWindow: TimeWindow | null
   note: string | null
+  /** Why the row needs attention (quote queue, or a quote waiting for the customer); absent otherwise. */
+  tag?: QueueTag | null
 }
+
+export type QueueTag = 'New' | 'Revision' | 'Expired' | 'QuoteReady' | 'ExpiresSoon'
 
 export interface ParcelView {
   parcelId: string
@@ -128,6 +132,9 @@ export interface QuoteView {
   isExpired: boolean
   awaitingOwnerApproval: boolean
   outcome: string
+  decision?: 'Pending' | 'Accepted' | 'Rejected' | 'RevisionRequested' | 'Expired' | null
+  decisionReason?: string | null
+  confirmedVia?: string | null
 }
 
 export interface PaymentView {

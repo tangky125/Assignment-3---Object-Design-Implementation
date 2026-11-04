@@ -57,14 +57,18 @@ public interface IQuoteService
     /// <summary>Every quote version for a request, oldest first (variant 3a).</summary>
     IReadOnlyList<QuoteView> QuoteHistory(string reference);
 
-    /// <summary>Accepts the current quote; refused once it has expired (Task 3 variant 1a).</summary>
-    OperationResult Accept(string reference, UserSession by);
+    /// <summary>
+    /// Accepts the current quote; refused once it has expired (Task 3 variant 1a).
+    /// <paramref name="confirmedVia"/> says how the customer gave the decision and is required when
+    /// office staff record it on the customer's behalf (Task 3 subtask 2); null for the customer.
+    /// </summary>
+    OperationResult Accept(string reference, UserSession by, string? confirmedVia);
 
     /// <summary>Rejects the current quote and closes the request.</summary>
-    OperationResult Reject(string reference, string reason, UserSession by);
+    OperationResult Reject(string reference, string reason, UserSession by, string? confirmedVia);
 
     /// <summary>Asks for a revised quote; the request returns to the quote queue (variant 2a/2d).</summary>
-    OperationResult RequestRevision(string reference, string reason, UserSession by);
+    OperationResult RequestRevision(string reference, string reason, UserSession by, string? confirmedVia);
 
     /// <summary>Quotes held for owner approval.</summary>
     IReadOnlyList<RequestSummary> AwaitingOwnerApproval();

@@ -235,7 +235,7 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
         Get(reference)?.Quotes.Select(q => ToView(reference, q)).ToList() ?? new List<QuoteView>();
 
     /// <inheritdoc/>
-    public OperationResult Accept(string reference, UserSession by) => Command(reference, r =>
+    public OperationResult Accept(string reference, UserSession by, string? confirmedVia) => Command(reference, r =>
     {
         QuoteRecord? q = r.CurrentQuote;
         if (r.Status != Status.Quoted || q is null)
@@ -256,7 +256,7 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
     });
 
     /// <inheritdoc/>
-    public OperationResult Reject(string reference, string reason, UserSession by) => Command(reference, r =>
+    public OperationResult Reject(string reference, string reason, UserSession by, string? confirmedVia) => Command(reference, r =>
     {
         QuoteRecord q = r.CurrentQuote ?? throw new InvalidOperationException("There is no quote to reject.");
         q.Outcome = $"Rejected: {reason}";
@@ -265,7 +265,7 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
     });
 
     /// <inheritdoc/>
-    public OperationResult RequestRevision(string reference, string reason, UserSession by) => Command(reference, r =>
+    public OperationResult RequestRevision(string reference, string reason, UserSession by, string? confirmedVia) => Command(reference, r =>
     {
         QuoteRecord q = r.CurrentQuote ?? throw new InvalidOperationException("There is no quote to revise.");
         q.Outcome = $"Revision asked: {reason}";
@@ -565,6 +565,43 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
         }
 
         return viewer.CustomerId == r.CustomerId ? ViewerLevel.Customer : ViewerLevel.None;
+    }
+
+    // ---------------------------------------------------------------- read-model mirror for real areas
+
+    /// <summary>
+    /// Copies the result of a real Area 2 command into this stand-in's request record, so tracking,
+    /// customer lists and the allocation queue (still answered here) show the new status, quote
+    /// versions and history. The real domain already checked the move, so no lifecycle check here.
+    /// </summary>
+    /// <param name="reference">The request reference.</param>
+    /// <param name="status">The status the domain moved the request to.</param>
+    /// <param name="quotes">Every quote version, as the UI sees them.</param>
+    /// <param name="newEvents">History entries the command added.</param>
+    public void MirrorQuoteState(string reference, Status status, IReadOnlyList<QuoteView> quotes, IReadOnlyList<EventView> newEvents)
+    {
+        ArgumentNullException.ThrowIfNull(quotes);
+        ArgumentNullException.ThrowIfNull(newEvents);
+        RequestRecord? r = Get(reference);
+        if (r is null)
+        {
+            return;
+        }
+
+        r.Quotes.Clear();
+        foreach (QuoteView q in quotes)
+        {
+            r.Quotes.Add(new QuoteRecord(q.Version, q.PickupWindow, q.DeliveryWindow, q.IssuedAt)
+            {
+                Price = q.Price,
+                AdjustReason = q.AdjustReason,
+                AwaitingOwner = q.AwaitingOwnerApproval,
+                Outcome = q.IsExpired ? "Issued, awaiting decision" : q.Outcome,
+            });
+        }
+
+        r.Status = status;
+        r.Events.AddRange(newEvents);
     }
 
     // ---------------------------------------------------------------- helpers

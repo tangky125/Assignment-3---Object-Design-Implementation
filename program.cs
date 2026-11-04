@@ -13,6 +13,7 @@ const string Url = "http://localhost:5080";
 if (args.Contains("--selftest", StringComparer.Ordinal))
 {
     Dms.Domain.SelfTest.Run();
+    Dms.Domain.QuotingSelfTest.Run();
     return;
 }
 
@@ -21,12 +22,23 @@ builder.WebHost.UseUrls(Url);
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
-// TEMPORARY BOOTSTRAP FOR TESTING AREA 4.
-// DemoBackend still answers Areas 1-3, tracking and sign-in; the real DeliveryServiceAdapter
-// answers Area 4 over the locked Domain. Sign in as "ben" (password demo123) and open DMS-2026-0006.
+// TEMPORARY BOOTSTRAP.
+// DemoBackend still answers Areas 1 and 3, tracking and sign-in.
+// Area 2 is real: QuoteServiceAdapter over QuoteNegotiator, ServiceArea and the pricing policies.
+//   DemoQuoteRegistry restores one negotiator per request from the demo records and mirrors every
+//   result back, so tracking and the allocation queue stay consistent.
+// Area 4 is real: DeliveryServiceAdapter over the locked Domain. Sign in as "ben" (password demo123)
+//   and open DMS-2026-0006.
 DmsServices demo = DemoBackend.Create(() => DateTime.Now);
+StatusLifecycle lifecycle = demo.Lifecycle;
+SystemConfiguration configuration = SystemConfiguration.Default;
+IQuoteRegistry quoteRegistry = new DemoQuoteRegistry(demo, lifecycle, configuration);
 IDeliveryRegistry registry = new TestDeliveryRegistry(demo);
-DmsServices services = demo with { Deliveries = new DeliveryServiceAdapter(registry, () => DateTimeOffset.Now) };
+DmsServices services = demo with
+{
+    Quotes = new QuoteServiceAdapter(quoteRegistry, new ServiceArea(configuration), () => DateTimeOffset.Now),
+    Deliveries = new DeliveryServiceAdapter(registry, () => DateTimeOffset.Now),
+};
 
 builder.Services.AddSingleton(services);
 builder.Services.AddSingleton<SessionStore>();

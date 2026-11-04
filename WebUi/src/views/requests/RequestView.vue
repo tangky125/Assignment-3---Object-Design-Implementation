@@ -31,10 +31,26 @@ const reason = ref('')
 const reasonError = ref<string | null>(null)
 const busy = ref(false)
 const quoteVersions = ref<QuoteView[] | null>(null)
+
+// Office staff recording a decision the customer gave by phone, email or in person must say how
+// (A1 Task 3 subtask 2), so the history shows it did not come from the customer's own account.
+const channels = ['phone call', 'email', 'in person', 'other'] as const
+const channel = ref<string>('')
+const channelDetail = ref('')
+const channelError = ref<string | null>(null)
+const channelDetailError = ref<string | null>(null)
 const showReceipt = ref(false)
 
 const canDecide = computed(() => level.value === 'Customer' || isOffice.value)
+const recordingForCustomer = computed(() => isOffice.value && level.value !== 'Customer')
+const needsChannel = computed(
+  () => recordingForCustomer.value && action.value !== null && action.value !== 'cancel',
+)
 const quote = computed(() => detail.value?.currentQuote ?? null)
+// A quote that expired before a decision returns the request to the office queue (A1 Task 2 variant 5a).
+const lapsedQuote = computed(() =>
+  detail.value?.status === 'Requested' && quote.value?.outcome.startsWith('Expired') ? quote.value : null,
+)
 const decisionOpen = computed(
   () =>
     canDecide.value &&
@@ -63,6 +79,10 @@ function start(a: Action): void {
   action.value = a
   reason.value = ''
   reasonError.value = null
+  channel.value = ''
+  channelDetail.value = ''
+  channelError.value = null
+  channelDetailError.value = null
   message.value = null
 }
 
@@ -73,17 +93,30 @@ function stop(): void {
 
 async function confirm(): Promise<void> {
   if (action.value === null) return
-  if (action.value !== 'accept') {
-    reasonError.value = rules.reason(reason.value)
-    if (reasonError.value) return
+  reasonError.value = action.value !== 'accept' ? rules.reason(reason.value) : null
+  channelError.value = null
+  channelDetailError.value = null
+  if (needsChannel.value) {
+    channelError.value = channel.value ? null : 'Choose how the customer gave this decision.'
+    channelDetailError.value =
+      channel.value === 'other' && channelDetail.value.trim() === ''
+        ? 'Say how the customer confirmed, e.g. a text message.'
+        : rules.optionalText(80)(channelDetail.value)
   }
+  if (reasonError.value || channelError.value || channelDetailError.value) return
   busy.value = true
   try {
     const r = reason.value.trim()
+    const extra = channelDetail.value.trim()
+    const via = needsChannel.value
+      ? channel.value === 'other'
+        ? extra
+        : `${channel.value}${extra ? `: ${extra}` : ''}`
+      : null
     const calls: Record<Action, () => Promise<OperationResult>> = {
-      accept: () => quoteApi.accept(reference.value),
-      reject: () => quoteApi.reject(reference.value, r),
-      revise: () => quoteApi.revise(reference.value, r),
+      accept: () => quoteApi.accept(reference.value, via),
+      reject: () => quoteApi.reject(reference.value, r, via),
+      revise: () => quoteApi.revise(reference.value, r, via),
       cancel: () => requestApi.cancel(reference.value, r),
     }
     const result = await calls[action.value]()
@@ -130,7 +163,12 @@ async function toggleVersions(): Promise<void> {
     <!-- Actions -->
     <section v-if="canDecide" class="card actions-card" aria-labelledby="actions-title">
       <h2 id="actions-title">What would you like to do?</h2>
-      <p v-if="detail.status === 'Requested' && !quote?.awaitingOwnerApproval" class="muted">
+      <p v-if="lapsedQuote" class="message message-notice" data-testid="lapsed-quote">
+        <span class="label">Note:</span> quote v{{ lapsedQuote.version }} ({{ money(lapsedQuote.price) }})
+        expired on {{ when(lapsedQuote.validUntil) }} without a decision, so it can no longer be accepted.
+        Office staff are preparing a new quote.
+      </p>
+      <p v-else-if="detail.status === 'Requested' && !quote?.awaitingOwnerApproval" class="muted">
         This request is waiting for office staff to prepare a quote.
       </p>
       <p v-if="quote?.awaitingOwnerApproval" class="muted">
@@ -162,13 +200,57 @@ async function toggleVersions(): Promise<void> {
 
       <ConfirmBox
         v-if="action"
-        :question="questions[action]"
+        :question="
+          needsChannel
+            ? `${questions[action]} You are recording this for ${detail.customerName}.`
+            : questions[action]
+        "
         :confirm-label="action === 'accept' ? 'Yes, accept' : 'Yes, go ahead'"
         :danger="action === 'cancel' || action === 'reject'"
         :busy="busy"
         @confirm="confirm"
         @cancel="stop"
       >
+        <template v-if="needsChannel">
+          <FormField
+            id="channel"
+            label="How did the customer confirm?"
+            hint="Recorded in the history so everyone can see the decision came from the customer."
+            :error="channelError"
+            required
+          >
+            <template #default="f">
+              <select
+                :id="f.id"
+                v-model="channel"
+                :aria-describedby="f.describedBy"
+                :aria-invalid="f.invalid"
+              >
+                <option value="" disabled>Choose one</option>
+                <option v-for="c in channels" :key="c" :value="c">
+                  {{ c[0].toUpperCase() + c.slice(1) }}
+                </option>
+              </select>
+            </template>
+          </FormField>
+          <FormField
+            id="channel-detail"
+            :label="channel === 'other' ? 'How exactly?' : 'Who and when'"
+            :hint="channel === 'other' ? 'e.g. text message to 0412 345 678' : 'e.g. Jane Citizen, 10:15'"
+            :error="channelDetailError"
+            :required="channel === 'other'"
+          >
+            <template #default="f">
+              <input
+                :id="f.id"
+                v-model="channelDetail"
+                type="text"
+                :aria-describedby="f.describedBy"
+                :aria-invalid="f.invalid"
+              />
+            </template>
+          </FormField>
+        </template>
         <FormField
           v-if="action !== 'accept'"
           id="reason"
