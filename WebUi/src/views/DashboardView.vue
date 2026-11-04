@@ -5,7 +5,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { hasRole, isOffice, isStaff, session } from '@/session/session'
 import { takeFlash, type Message } from '@/session/flash'
-import { quoteQueueSummary, refreshWorkCounts, workCounts } from '@/session/workCounts'
+import { decisionSummary, quoteQueueSummary, refreshWorkCounts, workCounts } from '@/session/workCounts'
 import MessageBanner from '@/components/MessageBanner.vue'
 
 interface Tile {
@@ -41,6 +41,7 @@ const tiles = computed<Tile[]>(() => {
         to: '/my/requests',
         title: 'My requests and quotes',
         text: 'Accept, reject or revise a quote, cancel, or see a receipt.',
+        waiting: decisionSummary(),
       },
       { to: '/track', title: 'Track a delivery', text: 'See where a delivery is with its reference.' },
     )

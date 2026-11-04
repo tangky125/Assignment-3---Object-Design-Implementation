@@ -63,7 +63,15 @@ async function onSignOut(): Promise<void> {
       <div class="container nav-inner">
         <RouterLink to="/dashboard">Main menu</RouterLink>
         <RouterLink v-if="hasRole('Customer') || isOffice" to="/requests/new">Log request</RouterLink>
-        <RouterLink v-if="hasRole('Customer')" to="/my/requests">My requests</RouterLink>
+        <RouterLink
+          v-if="hasRole('Customer')"
+          to="/my/requests"
+          :aria-label="countLabel('My requests', workCounts.decisions, 'waiting for your decision')"
+        >
+          My requests<span v-if="workCounts.decisions" class="count" aria-hidden="true">{{
+            workCounts.decisions
+          }}</span>
+        </RouterLink>
         <RouterLink
           v-if="isOffice"
           to="/quotes"

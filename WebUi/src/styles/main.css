@@ -382,9 +382,22 @@ tbody tr:hover {
   white-space: nowrap;
 }
 
+/* Status colours: blue waits on the office, orange waits on the customer, green is agreed,
+   teal is in progress, solid green is finished, red is a problem, grey is closed. */
 .badge-open {
   color: #1c4f8a;
   background: #e6effa;
+}
+
+.badge-customer {
+  color: #8a4600;
+  background: #fde7c8;
+  border-color: #d9862a;
+}
+
+.badge-agreed {
+  color: var(--success);
+  background: var(--success-bg);
 }
 
 .badge-active {
@@ -395,6 +408,12 @@ tbody tr:hover {
 .badge-done {
   color: var(--success);
   background: var(--success-bg);
+}
+
+.badge-finished {
+  color: #fff;
+  background: var(--success);
+  border-color: var(--success);
 }
 
 .badge-closed {
@@ -412,21 +431,27 @@ tbody tr:hover {
   background: var(--notice-bg);
 }
 
-/* Why a request is in the quote queue */
+/* Why a row needs attention (quote queue, customer's requests) */
 .badge-tag-new {
   color: #1c4f8a;
   background: #e6effa;
 }
 
-.badge-tag-revision {
+.badge-tag-revision,
+.badge-tag-quoteready {
   color: var(--brand-dark);
   background: var(--accent);
   border-color: #c98317;
 }
 
 .badge-tag-expired {
-  color: var(--notice);
-  background: var(--notice-bg);
+  color: #555;
+  background: #eee;
+}
+
+.badge-tag-expiressoon {
+  color: var(--error);
+  background: var(--error-bg);
 }
 
 /* ---------- confirm box ---------- */

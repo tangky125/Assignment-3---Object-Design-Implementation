@@ -97,7 +97,7 @@ public sealed record RequestSummary(
     string? Note,
     string? Tag = null);
 
-/// <summary>The tags shown on rows of the quote queue.</summary>
+/// <summary>The tags shown on rows of the quote queue and of a customer's request list.</summary>
 public static class QueueTags
 {
     /// <summary>Never quoted.</summary>
@@ -108,6 +108,12 @@ public static class QueueTags
 
     /// <summary>The last quote expired without a decision.</summary>
     public const string Expired = "Expired";
+
+    /// <summary>On a customer's list: a quote is waiting for their decision.</summary>
+    public const string QuoteReady = "QuoteReady";
+
+    /// <summary>On a customer's list: a quote waiting for their decision expires within a few hours.</summary>
+    public const string ExpiresSoon = "ExpiresSoon";
 }
 
 /// <summary>One parcel on a request.</summary>

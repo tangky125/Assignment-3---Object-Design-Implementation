@@ -106,11 +106,11 @@ export interface RequestSummary {
   parcelCount: number
   pickupWindow: TimeWindow | null
   note: string | null
-  /** Why the row is in the quote queue; absent on other lists. */
+  /** Why the row needs attention (quote queue, or a quote waiting for the customer); absent otherwise. */
   tag?: QueueTag | null
 }
 
-export type QueueTag = 'New' | 'Revision' | 'Expired'
+export type QueueTag = 'New' | 'Revision' | 'Expired' | 'QuoteReady' | 'ExpiresSoon'
 
 export interface ParcelView {
   parcelId: string

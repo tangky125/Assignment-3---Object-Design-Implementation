@@ -47,6 +47,10 @@ const needsChannel = computed(
   () => recordingForCustomer.value && action.value !== null && action.value !== 'cancel',
 )
 const quote = computed(() => detail.value?.currentQuote ?? null)
+// A quote that expired before a decision returns the request to the office queue (A1 Task 2 variant 5a).
+const lapsedQuote = computed(() =>
+  detail.value?.status === 'Requested' && quote.value?.outcome.startsWith('Expired') ? quote.value : null,
+)
 const decisionOpen = computed(
   () =>
     canDecide.value &&
@@ -159,7 +163,12 @@ async function toggleVersions(): Promise<void> {
     <!-- Actions -->
     <section v-if="canDecide" class="card actions-card" aria-labelledby="actions-title">
       <h2 id="actions-title">What would you like to do?</h2>
-      <p v-if="detail.status === 'Requested' && !quote?.awaitingOwnerApproval" class="muted">
+      <p v-if="lapsedQuote" class="message message-notice" data-testid="lapsed-quote">
+        <span class="label">Note:</span> quote v{{ lapsedQuote.version }} ({{ money(lapsedQuote.price) }})
+        expired on {{ when(lapsedQuote.validUntil) }} without a decision, so it can no longer be accepted.
+        Office staff are preparing a new quote.
+      </p>
+      <p v-else-if="detail.status === 'Requested' && !quote?.awaitingOwnerApproval" class="muted">
         This request is waiting for office staff to prepare a quote.
       </p>
       <p v-if="quote?.awaitingOwnerApproval" class="muted">

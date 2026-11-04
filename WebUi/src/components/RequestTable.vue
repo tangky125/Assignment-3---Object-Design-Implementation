@@ -5,7 +5,14 @@ import type { QueueTag, RequestSummary } from '@/api/types'
 import StatusBadge from './StatusBadge.vue'
 import { shortWhen } from '@/utils/format'
 
-const tagText: Record<QueueTag, string> = { New: 'New', Revision: 'Revision', Expired: 'Expired' }
+const tagText: Record<QueueTag, string> = {
+  New: 'New',
+  Revision: 'Revision',
+  Expired: 'Expired',
+  QuoteReady: 'Quote ready',
+  ExpiresSoon: 'Expires soon',
+}
+const strong: (QueueTag | null | undefined)[] = ['Revision', 'QuoteReady', 'ExpiresSoon']
 
 defineProps<{
   rows: RequestSummary[]
@@ -57,7 +64,7 @@ defineProps<{
                 data-testid="queue-tag"
                 >{{ tagText[row.tag] }}</span
               >
-              <span :class="row.tag === 'Revision' ? 'note-strong' : 'muted'">{{ row.note ?? '' }}</span>
+              <span :class="strong.includes(row.tag) ? 'note-strong' : 'muted'">{{ row.note ?? '' }}</span>
             </div>
           </td>
           <td class="action-cell">

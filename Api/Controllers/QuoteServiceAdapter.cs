@@ -49,6 +49,9 @@ public sealed class QuoteServiceAdapter : IQuoteService
     private readonly Func<DateTimeOffset> _clock;
     private readonly IHttpContextAccessor? _http;
 
+    /// <summary>A quote this close to its deadline is flagged "Expires soon" to the customer.</summary>
+    public static readonly TimeSpan ExpiresSoonWithin = TimeSpan.FromHours(4);
+
     /// <summary>Creates the adapter.</summary>
     /// <param name="registry">Supplies the domain state for a reference.</param>
     /// <param name="area">The service area, which selects the pricing policy.</param>
@@ -157,7 +160,50 @@ public sealed class QuoteServiceAdapter : IQuoteService
     public IReadOnlyList<RequestSummary> RequestsForCustomer(string customerId)
     {
         ArgumentNullException.ThrowIfNull(customerId);
-        return _registry.RequestsForCustomer(customerId);
+        var rows = new List<RequestSummary>();
+        foreach (RequestSummary row in _registry.RequestsForCustomer(customerId))
+        {
+            if (_registry.Find(row.Reference) is not { } context)
+            {
+                rows.Add(row);
+                continue;
+            }
+
+            // Lazy expiry (A2 S3): the customer must never be told a lapsed quote is still open.
+            ExpireIfDue(row.Reference, context);
+            rows.Add(WithDecisionTag(row with { Status = context.Negotiator.Status }, context.Negotiator));
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Marks a request whose quote is waiting for the customer's decision, with the price and the
+    /// deadline, so the customer notices it (and office staff taking a call can see it too).
+    /// </summary>
+    private RequestSummary WithDecisionTag(RequestSummary row, QuoteNegotiator negotiator)
+    {
+        if (negotiator.Status == Status.Requested && negotiator.CurrentQuote is { Decision: QuoteDecision.Expired } lapsed)
+        {
+            return row with
+            {
+                Tag = QueueTags.Expired,
+                Note = $"Quote v{lapsed.Version} expired; a new quote is being prepared",
+            };
+        }
+
+        if (negotiator.Status != Status.Quoted
+            || negotiator.CurrentQuote is not { Decision: QuoteDecision.Pending, AwaitingOwnerApproval: false } quote)
+        {
+            return row;
+        }
+
+        bool soon = quote.ValidUntil - Now <= ExpiresSoonWithin;
+        return row with
+        {
+            Tag = soon ? QueueTags.ExpiresSoon : QueueTags.QuoteReady,
+            Note = $"{Display.Money(quote.FinalPrice!.Value)}, decide by {Display.When(quote.ValidUntil.LocalDateTime)}",
+        };
     }
 
     /// <inheritdoc/>
@@ -179,7 +225,9 @@ public sealed class QuoteServiceAdapter : IQuoteService
 
         QuoteNegotiator negotiator = context.Negotiator;
         Quote? quote = negotiator.CurrentQuote;
-        if (quote is not null && ExpireIfDue(reference, context))
+
+        // Expired now, or already expired while the customer's page was open (A1 Task 3 variant 1a).
+        if (quote is not null && (ExpireIfDue(reference, context) || quote.Decision == QuoteDecision.Expired))
         {
             return OperationResult.Fail(
                 $"This quote expired on {Display.When(quote.ValidUntil.LocalDateTime)} and cannot be accepted. "
