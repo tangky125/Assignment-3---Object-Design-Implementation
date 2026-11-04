@@ -29,18 +29,18 @@ public class Delivery
     // 1. Collection, checked off parcel by parcel (variant 4a); status flips only when ALL are in
     public void RecordParcelCollected(Guid eventId, string actorId, DateTimeOffset at, Parcel parcel)
     {
-        if (!_seen.Add(eventId))
+        if (_seen.Contains(eventId))
         {
             return;
         }
 
         parcel.MarkCollected();                               // Reuben's Parcel owns its flag
-        if (!_request.Parcels.All(p => p.IsCollected))
+        if (_request.Parcels.All(p => p.IsCollected))
         {
-            return;
+            Move(Status.Collected, "All parcels collected", actorId, at, eventId);
         }
 
-        Move(Status.Collected, "All parcels collected", actorId, at, eventId);
+        _seen.Add(eventId);                                   // memory committed only after success (DA9)
     }
 
     // 2. Payment attempt: a record, NOT a status change.
@@ -48,9 +48,10 @@ public class Delivery
     public Payment RecordPaymentAttempt(Guid eventId, string actorId, DateTimeOffset at,
                                         PaymentMethod method, decimal amount)
     {
-        if (!_seen.Add(eventId))
+        if (_seen.Contains(eventId))
         {
-            return _payments.First(p => p.EventId == eventId);        // replay => same record (REL-03)
+            return _payments.Find(p => p.EventId == eventId)
+                ?? throw new InvalidOperationException($"Event {eventId} was already used by another command (DA9).");
         }
 
         if (_status is not (Status.Scheduled or Status.Collected))
@@ -68,24 +69,26 @@ public class Delivery
         _payments.Add(payment);
         _history.Add(new DeliveryEvent(eventId, at, null, null,
                                        $"Payment attempt: {payment.Outcome}", actorId));
+        _seen.Add(eventId);                                   // memory committed only after success (DA9)
         return payment;
     }
 
     // 3. Successful hand-over
     public void RecordSuccessfulHandover(Guid eventId, string actorId, DateTimeOffset at, string receivedBy)
     {
-        if (!_seen.Add(eventId))
+        if (_seen.Contains(eventId))
         {
             return;
         }
 
         Move(Status.Delivered, $"Handed over to {receivedBy}", actorId, at, eventId);
+        _seen.Add(eventId);                                   // memory committed only after success (DA9)
     }
 
     // 4. Failed attempt; reason mandatory (Task 5 subtask 5; UI validation backs this)
     public void RecordFailedAttempt(Guid eventId, string actorId, DateTimeOffset at, string reason)
     {
-        if (!_seen.Add(eventId))
+        if (_seen.Contains(eventId))
         {
             return;
         }
@@ -96,28 +99,31 @@ public class Delivery
         }
 
         Move(Status.DeliveryFailed, $"Failed: {reason}", actorId, at, eventId);
+        _seen.Add(eventId);                                   // memory committed only after success (DA9)
     }
 
     // ---- inbound hooks owned by OTHER areas (no Area-4 UI touches these) ----
     public void RecordAllocation(DeliveryStaffProfile profile, Guid eventId, string actorId, DateTimeOffset at)
     {   // called by AllocationCoordinator (Maleesha, Task 4)
-        if (!_seen.Add(eventId))
+        if (_seen.Contains(eventId))
         {
             return;
         }
 
         _allocatedProfile = profile;
         Move(Status.Scheduled, "Allocated", actorId, at, eventId);
+        _seen.Add(eventId);                                   // memory committed only after success (DA9)
     }
 
     public void ApplyCustomerCancellation(Guid eventId, string actorId, DateTimeOffset at, string reason)
     {   // called by DeliveryRequest (Clarice, Task 3) — never by the driver screen
-        if (!_seen.Add(eventId))
+        if (_seen.Contains(eventId))
         {
             return;
         }
 
         Move(Status.Cancelled, $"Customer cancelled: {reason}", actorId, at, eventId);
+        _seen.Add(eventId);                                   // memory committed only after success (DA9)
     }
 
     // ---- observer wiring + the one place status is written ----

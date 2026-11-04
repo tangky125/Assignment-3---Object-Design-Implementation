@@ -104,7 +104,7 @@ public sealed class DeliveryServiceAdapter : IDeliveryService
 
         try
         {
-            context.Delivery.RecordParcelCollected(EventId(reference, "collect", by), Actor(by), Now, parcel);
+            context.Delivery.RecordParcelCollected(EventId(reference, $"collect-{parcel.Label}", by), Actor(by), Now, parcel);
         }
         catch (InvalidOperationException ex)
         {
@@ -307,20 +307,18 @@ public sealed class DeliveryServiceAdapter : IDeliveryService
     }
 
     /// <summary>
-    /// Builds the replay key (DA9) for one command: the Idempotency-Key header when the caller sends a
-    /// valid Guid, otherwise a deterministic Guid from reference + action + actor + minute, so a
-    /// double-submitted POST in the same minute collapses onto the Domain's replay memory.
+    /// Builds the replay key (DA9) for one command. The Idempotency-Key header is honoured when the
+    /// caller sends a valid Guid, combined with the action so one header cannot collide across two
+    /// different commands (e.g. two parcels ticked in the same minute). Otherwise a deterministic Guid
+    /// comes from reference + action + actor + minute, so a double-submitted POST in the same minute
+    /// collapses onto the Domain's replay memory.
     /// </summary>
     private Guid EventId(string reference, string action, UserSession by)
     {
         string? header = _http?.HttpContext?.Request.Headers["Idempotency-Key"].FirstOrDefault();
-        if (!string.IsNullOrWhiteSpace(header) && Guid.TryParse(header.Trim(), out Guid supplied))
-        {
-            return supplied;
-        }
-
-        long minute = Now.ToUnixTimeSeconds() / 60;
-        string seed = string.Create(CultureInfo.InvariantCulture, $"{reference}|{action}|{Actor(by)}|{minute}");
+        string seed = string.IsNullOrWhiteSpace(header)
+            ? string.Create(CultureInfo.InvariantCulture, $"{reference}|{action}|{Actor(by)}|{Now.ToUnixTimeSeconds() / 60}")
+            : string.Create(CultureInfo.InvariantCulture, $"{header.Trim()}|{action}");
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
         return new Guid(hash.AsSpan(0, 16));
     }
