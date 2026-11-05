@@ -17,34 +17,37 @@ if (args.Contains("--selftest", StringComparer.Ordinal))
     return;
 }
 
+if (args.Contains("--integration-selftest", StringComparer.Ordinal))
+{
+    IntegrationSelfTest.Run();
+    return;
+}
+
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(Url);
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
-// TEMPORARY BOOTSTRAP.
-// DemoBackend still answers Areas 1 and 3, tracking and sign-in.
-// Area 2 is real: QuoteServiceAdapter over QuoteNegotiator, ServiceArea and the pricing policies.
-//   DemoQuoteRegistry restores one negotiator per request from the demo records and mirrors every
-//   result back, so tracking and the allocation queue stay consistent.
-// Area 4 is real: DeliveryServiceAdapter over the locked Domain. Sign in as "ben" (password demo123)
-//   and open DMS-2026-0006.
-DmsServices demo = DemoBackend.Create(() => DateTime.Now);
-StatusLifecycle lifecycle = demo.Lifecycle;
-SystemConfiguration configuration = SystemConfiguration.Default;
-IQuoteRegistry quoteRegistry = new DemoQuoteRegistry(demo, lifecycle, configuration);
-IDeliveryRegistry registry = new TestDeliveryRegistry(demo);
-DmsServices services = demo with
-{
-    Quotes = new QuoteServiceAdapter(quoteRegistry, new ServiceArea(configuration), () => DateTimeOffset.Now),
-    Deliveries = new DeliveryServiceAdapter(registry, () => DateTimeOffset.Now),
-};
+// Areas 1 and authentication still use the temporary in-memory service. The
+// initialiser replaces the Area 3 demo allocation handler and the Area 4 test registry.
+var (services, registry, store, backend) = DmsInitialiser.Create(builder.Environment.ContentRootPath);
 
 builder.Services.AddSingleton(services);
 builder.Services.AddSingleton<SessionStore>();
 builder.Services.AddSingleton<ApiAccess>();
 
 WebApplication app = builder.Build();
+// Commit all successful business mutations before completing the request.
+// Both domain delivery state and the UI read models are persisted together.
+app.Use(async (context, next) =>
+{
+    await next(context);
+    if (HttpMethods.IsPost(context.Request.Method) && context.Request.Path.StartsWithSegments("/api"))
+    {
+        registry.SyncAll();
+        store.Save(backend);
+    }
+});
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
@@ -61,47 +64,3 @@ app.Lifetime.ApplicationStarted.Register(() =>
 
 app.Run();
 
-/// <summary>
-/// Test seam for Area 4: hands the adapter one real <see cref="Delivery"/> in the Scheduled state,
-/// built from the seeded request DMS-2026-0006 so the job page's access checks still pass.
-/// Read models and the other areas keep coming from the demo backend until they are real.
-/// </summary>
-file sealed class TestDeliveryRegistry : IDeliveryRegistry
-{
-    private const string TestReference = "DMS-2026-0006";
-    private const string TestStaffId = "S003";
-    private const decimal TestAmountDue = 34m;
-
-    private readonly DmsServices _demo;
-    private readonly DeliveryContext _test;
-
-    /// <summary>Builds the one test delivery and keeps the demo backend for read models.</summary>
-    /// <param name="demo">The demo services, still used for Areas 1-3, tracking and sign-in.</param>
-    public TestDeliveryRegistry(DmsServices demo)
-    {
-        _demo = demo;
-
-        DeliveryRequest request = new(TestReference);
-        request.Parcels.Add(new Parcel("P1", "Small"));
-        request.Parcels.Add(new Parcel("P2", "Medium"));
-
-        Delivery delivery = new(request, new StatusLifecycle());
-        delivery.RecordAllocation(
-            new DeliveryStaffProfile(TestStaffId, "Ben Nguyen"),
-            Guid.NewGuid(),
-            "office",
-            DateTimeOffset.Now);
-
-        _test = new DeliveryContext(delivery, request, TestAmountDue);
-    }
-
-    /// <inheritdoc/>
-    public DeliveryContext? Find(string reference) =>
-        string.Equals(reference, TestReference, StringComparison.OrdinalIgnoreCase) ? _test : null;
-
-    /// <inheritdoc/>
-    public IReadOnlyList<RequestSummary> JobsFor(string staffId) => _demo.Deliveries.JobsFor(staffId);
-
-    /// <inheritdoc/>
-    public RequestDetail? Detail(string reference) => _demo.Tracking.Find(reference);
-}
