@@ -20,9 +20,31 @@ public class Delivery
     { (_request, _lifecycle) = (request, lifecycle); }
 
     // ---- queries ----
+    public DeliveryRequest Request => _request;
     public Status Status => _status;
     public IReadOnlyList<DeliveryEvent> History => _history;
     public IReadOnlyList<Payment> Payments => _payments;
+
+    public DeliveryStaffProfile? AllocatedProfile => _allocatedProfile;
+
+    /// <summary>Rehydrates the existing business state without generating new operational events.</summary>
+    public void RestoreState(Status status, DeliveryStaffProfile? profile,
+        IReadOnlyList<PaymentViewSnapshot> payments, IReadOnlyList<DeliveryEvent> history)
+    {
+        _status = status;
+        _allocatedProfile = profile;
+        _history.Clear(); _history.AddRange(history);
+        _payments.Clear();
+        foreach (PaymentViewSnapshot snapshot in payments)
+            _payments.Add(Payment.Restore(this, snapshot.Method, snapshot.Amount,
+                snapshot.EventId, snapshot.At, snapshot.Successful, snapshot.Outcome));
+        _seen.Clear();
+        foreach (DeliveryEvent entry in history) _seen.Add(entry.EventId);
+        foreach (PaymentViewSnapshot payment in payments) _seen.Add(payment.EventId);
+    }
+
+    public sealed record PaymentViewSnapshot(Guid EventId, DateTimeOffset At, string Method,
+        decimal Amount, bool Successful, string Outcome);
 
     // ---- Task 5 commands (the four "Records…" rows of CRC Card 1) ----
 
@@ -34,6 +56,11 @@ public class Delivery
             return;
         }
 
+        if (_status != Status.Scheduled && !parcel.IsCollected)
+            throw new InvalidOperationException($"Parcels cannot be collected when status is {_status}.");
+        if (!_request.Parcels.Contains(parcel))
+            throw new InvalidOperationException("Parcel does not belong to this delivery.");
+        if (parcel.IsCollected) return;
         parcel.MarkCollected();                               // Reuben's Parcel owns its flag
         if (_request.Parcels.All(p => p.IsCollected))
         {
@@ -110,9 +137,26 @@ public class Delivery
             return;
         }
 
+        if (!_lifecycle.CanTransition(_status, Status.Scheduled))
+            throw new InvalidOperationException(_lifecycle.ExplainRefusal(_status, Status.Scheduled));
         _allocatedProfile = profile;
         Move(Status.Scheduled, "Allocated", actorId, at, eventId);
         _seen.Add(eventId);                                   // memory committed only after success (DA9)
+    }
+
+    /// <summary>Area 3 replaces staff on an already scheduled delivery without changing its status.</summary>
+    public void ReplaceAllocation(DeliveryStaffProfile profile, Guid eventId, string actorId, DateTimeOffset at, string reason)
+    {
+        if (_seen.Contains(eventId)) return;
+        if (_status != Status.Scheduled)
+            throw new InvalidOperationException("Only scheduled deliveries can have their staff replaced.");
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new ArgumentException("A replacement reason is required.", nameof(reason));
+        string prior = _allocatedProfile?.StaffName ?? "unassigned";
+        _allocatedProfile = profile;
+        _history.Add(new DeliveryEvent(eventId, at, Status.Scheduled, Status.Scheduled,
+            $"Reallocated from {prior} to {profile.StaffName}: {reason}", actorId));
+        _seen.Add(eventId);
     }
 
     public void ApplyCustomerCancellation(Guid eventId, string actorId, DateTimeOffset at, string reason)
