@@ -567,6 +567,14 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
         return viewer.CustomerId == r.CustomerId ? ViewerLevel.Customer : ViewerLevel.None;
     }
 
+    public (IReadOnlyList<DeliveryEvent> History, IReadOnlyList<Delivery.PaymentViewSnapshot> Payments)
+        DomainSnapshot(string reference)
+    {
+        RequestRecord? r = Get(reference);
+        return r is null ? (Array.Empty<DeliveryEvent>(), Array.Empty<Delivery.PaymentViewSnapshot>())
+            : (r.DomainHistory, r.DomainPayments);
+    }
+
     // ---------------------------------------------------------------- read-model mirror for real areas
 
     /// <summary>
@@ -602,6 +610,111 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
 
         r.Status = status;
         r.Events.AddRange(newEvents);
+    }
+
+    /// <summary>Restores a previously persisted Area 3 assignment into the temporary read model.</summary>
+    public void RestoreStaffAssignment(string reference, string staffId, string staffName)
+    {
+        RequestRecord? r = Get(reference);
+        if (r is null || r.Status is not (Status.Accepted or Status.DeliveryFailed or Status.Scheduled))
+            return;
+        if (r.StaffId == staffId && r.Status == Status.Scheduled) return;
+        r.StaffId = staffId;
+        r.Status = Status.Scheduled;
+        r.Events.Add(new EventView(Now, null, Status.Scheduled, SystemActor,
+            $"Restored allocation to {staffName} from JSON storage"));
+    }
+
+    /// <summary>Real roster profiles exposed to the Area 3 staff register.</summary>
+    public IReadOnlyList<DeliveryStaffProfile> StaffDirectory() => _staff
+        .Where(s => s.IsDelivery)
+        .Select(s => new DeliveryStaffProfile(s.Id, s.Name, s.From, s.To, s.Active)).ToList();
+
+    // ---------------------------------------------------------------- durable application data
+
+    // Persist mutable business records only. Demo credentials are seeded, never written to disk.
+    public sealed record SavedParcel(string Id, SizeBand Size, ParcelHandling Flags, string? Description, bool Collected);
+    public sealed record SavedQuote(int Version, TimeWindowView PickupWindow, TimeWindowView DeliveryWindow,
+        DateTime IssuedAt, decimal? Price, string? AdjustReason, bool AwaitingOwner, string Outcome);
+    public sealed record SavedRequest(string Reference, string CustomerId, DateTime LoggedAt, string LoggedBy,
+        AddressInput Pickup, ContactInput PickupContact, DateTime ReadyTime, AddressInput Destination,
+        ContactInput Recipient, string? Notes, Status Status, List<SavedParcel> Parcels,
+        List<SavedQuote> Quotes, string? StaffId, List<PaymentView> Payments, List<EventView> Events,
+        List<DeliveryEvent>? DomainHistory = null, List<Delivery.PaymentViewSnapshot>? DomainPayments = null);
+    public sealed record SavedState(int Version, int NextReference, int NextCustomer,
+        List<CustomerSummary> Customers, List<SavedRequest> Requests);
+
+    public SavedState ExportState() => new(1, _nextReference, _nextCustomer,
+        _customers.Select(ToSummary).ToList(),
+        _requests.Select(r => new SavedRequest(r.Reference, r.CustomerId, r.LoggedAt, r.LoggedBy,
+            r.Pickup, r.PickupContact, r.ReadyTime, r.Destination, r.Recipient, r.Notes, r.Status,
+            r.Parcels.Select(x => new SavedParcel(x.Id, x.Size, x.Flags, x.Description, x.Collected)).ToList(),
+            r.Quotes.Select(x => new SavedQuote(x.Version, x.PickupWindow, x.DeliveryWindow,
+                x.IssuedAt, x.Price, x.AdjustReason, x.AwaitingOwner, x.Outcome)).ToList(),
+            r.StaffId, r.Payments.ToList(), r.Events.ToList(),
+            r.DomainHistory.ToList(), r.DomainPayments.ToList())).ToList());
+
+    public void ImportState(SavedState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.Version != 1) throw new InvalidDataException($"Unsupported DMS data version {state.Version}.");
+        var customers = state.Customers.Select(c => new CustomerRecord(c.CustomerId, c.Name, c.Phone, c.Email)).ToList();
+        var requests = new List<RequestRecord>();
+        foreach (SavedRequest saved in state.Requests)
+        {
+            if (!customers.Any(c => c.Id == saved.CustomerId))
+                throw new InvalidDataException($"Unknown customer for {saved.Reference}.");
+            var r = new RequestRecord(saved.Reference, saved.CustomerId, saved.LoggedAt, saved.LoggedBy,
+                saved.Pickup, saved.PickupContact, saved.ReadyTime, saved.Destination, saved.Recipient, saved.Notes)
+            { Status = saved.Status, StaffId = saved.StaffId };
+            foreach (SavedParcel x in saved.Parcels)
+                r.Parcels.Add(new ParcelRecord(x.Id, x.Size, x.Flags, x.Description) { Collected = x.Collected });
+            foreach (SavedQuote x in saved.Quotes)
+                r.Quotes.Add(new QuoteRecord(x.Version, x.PickupWindow, x.DeliveryWindow, x.IssuedAt)
+                { Price = x.Price, AdjustReason = x.AdjustReason, AwaitingOwner = x.AwaitingOwner, Outcome = x.Outcome });
+            r.Payments.AddRange(saved.Payments);
+            r.Events.AddRange(saved.Events);
+            if (saved.DomainHistory is not null) r.DomainHistory.AddRange(saved.DomainHistory);
+            if (saved.DomainPayments is not null) r.DomainPayments.AddRange(saved.DomainPayments);
+            requests.Add(r);
+        }
+        if (requests.Select(r => r.Reference).Distinct(StringComparer.OrdinalIgnoreCase).Count() != requests.Count)
+            throw new InvalidDataException("Duplicate request references in DMS storage.");
+        _customers.Clear(); _customers.AddRange(customers);
+        _requests.Clear(); _requests.AddRange(requests);
+        _nextReference = Math.Max(state.NextReference, requests.Select(r =>
+            int.TryParse(r.Reference.Split('-').Last(), out int n) ? n + 1 : 1).DefaultIfEmpty(1).Max());
+        _nextCustomer = Math.Max(state.NextCustomer, customers.Select(c =>
+            int.TryParse(c.Id.TrimStart('C'), out int n) ? n + 1 : 1).DefaultIfEmpty(1).Max());
+    }
+
+    /// <summary>Mirrors one genuine domain delivery back into the UI tracking/read models.</summary>
+    public void SyncDelivery(string reference, Delivery delivery)
+    {
+        RequestRecord? r = Get(reference);
+        if (r is null) return;
+        r.Status = delivery.Status;
+        r.StaffId = delivery.AllocatedProfile?.StaffId;
+        r.DomainHistory.Clear();
+        r.DomainHistory.AddRange(delivery.History);
+        r.DomainPayments.Clear();
+        r.DomainPayments.AddRange(delivery.Payments.Select(payment => new Delivery.PaymentViewSnapshot(
+            payment.EventId, payment.AttemptedAt, payment.MethodName, payment.Amount,
+            payment.WasSuccessful, payment.OutcomeNote)));
+        foreach (ParcelRecord parcel in r.Parcels)
+        {
+            Parcel? domainParcel = delivery.Request.Parcels.FirstOrDefault(p => p.Label == parcel.Id);
+            if (domainParcel is not null) parcel.Collected = domainParcel.IsCollected;
+        }
+        r.Payments.Clear();
+        r.Payments.AddRange(delivery.Payments.Select(payment => new PaymentView(
+            payment.AttemptedAt.DateTime, payment.MethodName, payment.Amount,
+            payment.WasSuccessful, payment.Outcome?.ToString() ?? "Pending")));
+        foreach (DeliveryEvent evt in delivery.History)
+        {
+            var view = new EventView(evt.OccurredAt.DateTime, evt.From, evt.To ?? delivery.Status, evt.ActorId, evt.Note);
+            if (!r.Events.Contains(view)) r.Events.Add(view);
+        }
     }
 
     // ---------------------------------------------------------------- helpers
@@ -1065,5 +1178,8 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
         public List<PaymentView> Payments { get; } = new();
 
         public List<EventView> Events { get; } = new();
+
+        public List<DeliveryEvent> DomainHistory { get; } = new();
+        public List<Delivery.PaymentViewSnapshot> DomainPayments { get; } = new();
     }
 }
