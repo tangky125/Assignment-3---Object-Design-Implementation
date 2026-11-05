@@ -70,6 +70,17 @@ public class Payment
         OutcomeNote = note;
     }
 
+    /// <summary>Restores an attempt without calling a real payment gateway again.</summary>
+    internal static Payment Restore(Delivery delivery, string method, decimal amount,
+        Guid eventId, DateTimeOffset at, bool successful, string outcome)
+    {
+        PaymentMethod strategy = method.Equals("Cash", StringComparison.OrdinalIgnoreCase)
+            ? new CashPayment() : new CardPayment(new PaymentGateway(), "restored");
+        var payment = new Payment(delivery, strategy, amount, eventId, at);
+        payment.RecordOutcome(successful ? PaymentOutcome.Approved : PaymentOutcome.Declined, outcome);
+        return payment;
+    }
+
     private static string Money(decimal amount) =>
         "$" + amount.ToString("#,##0.00", CultureInfo.InvariantCulture);
 }
