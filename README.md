@@ -22,7 +22,7 @@ Customer: jane / demo123, open **My requests** to accept, reject or ask for a re
 |---|---|
 | `dotnet build` | Compiles: **Build succeeded, 0 warnings, 0 errors** |
 | `dotnet format --verify-no-changes` | Code follows `.editorconfig` (Microsoft conventions) |
-| `dotnet run --selftest` | 82 domain checks (30 Area 4 + 52 Area 2), PASS/FAIL per line, no web server started |
+| `dotnet run --selftest` | 125 domain checks (44 Area 4 + 52 Area 2 + 29 Area 1), PASS/FAIL per line, no web server started |
 | `cd WebUi && npm run build` | TypeScript type-check and UI build |
 | `cd WebUi && npm test` | UI tests |
 
@@ -30,12 +30,12 @@ Customer: jane / demo123, open **My requests** to accept, reject or ask for a re
 
     Assignment3.csproj          net8.0 Web SDK, RootNamespace Dms
     program.cs                  boot point: DI wiring, endpoint mapping, --selftest
-    Domain/                     locked business layer (no UI, no I/O, no clock)
+    Domain/                     locked business layer (no UI, no I/O, no clock); Area 1: Customer, CustomerDirectory, RequestRegister, DeliveryRequest, Parcel, AccessPolicy, RequestingSelfTest
     Quoting/                    Area 2 domain: Quote, QuoteNegotiator, ServiceArea, PricingPolicy (+Zone, OwnerApproved), SystemConfiguration, TimeWindow, QuotingSelfTest
     Api/Contracts/              one interface per business area + the records the UI sees
     Api/Endpoints/              minimal-API routes the Vue app calls (/api/...)
     Api/Controllers/            DeliveryController + DeliveryServiceAdapter (Area 4), QuoteServiceAdapter (Area 2)
-    Api/Demo/DemoBackend.cs     temporary in-memory stand-in for Areas 1 and 3, tracking, sign-in
+    Api/Demo/DemoBackend.cs     in-memory read model and seed data; Area 1 decisions are delegated to the Area 1 domain classes
     Api/Demo/DemoQuoteRegistry.cs  bridge: restores Area 2 negotiators from demo records, mirrors results back
     Api/Validation/             InputRules: format checks with actionable messages
     WebUi/                      Vue + TypeScript source (builds into wwwroot/)
