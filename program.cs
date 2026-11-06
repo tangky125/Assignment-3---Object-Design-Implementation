@@ -14,6 +14,7 @@ if (args.Contains("--selftest", StringComparer.Ordinal))
 {
     Dms.Domain.SelfTest.Run();
     Dms.Domain.QuotingSelfTest.Run();
+    Dms.Domain.RequestingSelfTest.Run();
     return;
 }
 

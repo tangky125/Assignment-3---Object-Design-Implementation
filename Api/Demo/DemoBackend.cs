@@ -71,9 +71,8 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
 
     /// <inheritdoc/>
     public IReadOnlyList<CustomerSummary> FindCustomers(string? phone, string? name) =>
-        _customers
-            .Where(c => (phone is not null && c.Phone == phone) || (name is not null && NameMatches(c.Name, name)))
-            .Select(ToSummary)
+        Directory().Search(phone, name)
+            .Select(c => ToSummary(_customers.First(x => x.Id == c.CustomerId)))
             .ToList();
 
     /// <inheritdoc/>
@@ -86,14 +85,19 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
     /// <inheritdoc/>
     public OperationResult<CustomerSummary> RegisterCustomer(string name, string phone, string? email)
     {
-        if (_customers.Any(c => c.Phone == phone))
+        // Area 1 domain: CustomerDirectory decides (duplicate phone, id issue); this class stores the result.
+        CustomerDirectory directory = Directory();
+        Outcome<Dms.Domain.Customer> outcome = directory.Register(name, phone, email);
+        if (!outcome.Succeeded)
         {
-            return OperationResult.Fail<CustomerSummary>($"A customer with phone {phone} is already held. Search again and choose them.");
+            return OperationResult.Fail<CustomerSummary>(outcome.Message);
         }
 
-        var customer = new CustomerRecord($"C{_nextCustomer++:000}", name, phone, email);
+        Dms.Domain.Customer added = outcome.Value!;
+        _nextCustomer = directory.NextNumber;
+        var customer = new CustomerRecord(added.CustomerId, added.Name, added.Phone, added.Email);
         _customers.Add(customer);
-        return OperationResult.Ok(ToSummary(customer), $"Customer {name} registered.");
+        return OperationResult.Ok(ToSummary(customer), outcome.Message);
     }
 
     /// <inheritdoc/>
@@ -108,36 +112,31 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
 
     /// <inheritdoc/>
     public OperationResult CheckPickupAddress(AddressInput pickup) =>
-        Zone(pickup.Postcode) is null
+        !RequestRegister.InServiceArea(pickup.Postcode)
             ? OperationResult.Fail($"Postcode {pickup.Postcode} is outside our Greater Melbourne service area. Parcels can only be collected inside it (postcodes 3000-3207).")
             : OperationResult.Ok("Pickup address is inside the service area.");
 
     /// <inheritdoc/>
     public OperationResult<string> SubmitRequest(RequestDraft draft, UserSession loggedBy)
     {
-        OperationResult pickupCheck = CheckPickupAddress(draft.Pickup);
-        if (!pickupCheck.Succeeded)
+        // Area 1 domain: RequestRegister applies the logging rules and issues the reference;
+        // this class keeps the read model the screens and the other areas use.
+        var register = new RequestRegister(Directory(), _nextReference);
+        Outcome<DeliveryRequest> outcome = register.Log(ToForm(draft), Now, Actor(loggedBy));
+        if (!outcome.Succeeded)
         {
-            return OperationResult.Fail<string>(pickupCheck.Message);
+            return OperationResult.Fail<string>(outcome.Message);
         }
 
-        if (draft.Parcels.Count == 0)
+        DeliveryRequest logged = outcome.Value!;
+        _nextReference = register.NextNumber;
+        CustomerRecord customer = _customers.First(c => c.Id == logged.CustomerId);
+        string reference = logged.Reference;
+        var request = new RequestRecord(reference, customer.Id, logged.LoggedAt, logged.LoggedBy!, draft.Pickup, draft.PickupContact, logged.ReadyTime, draft.Destination, draft.Recipient, logged.Notes);
+        for (int i = 0; i < logged.Parcels.Count; i++)
         {
-            return OperationResult.Fail<string>("A request needs at least one parcel.");
-        }
-
-        if (draft.ReadyTime < Now)
-        {
-            return OperationResult.Fail<string>("The ready time has already passed. Change the pickup ready time.");
-        }
-
-        CustomerRecord customer = _customers.First(c => c.Id == draft.CustomerId);
-        string reference = NewReference();
-        var request = new RequestRecord(reference, customer.Id, Now, Actor(loggedBy), draft.Pickup, draft.PickupContact, draft.ReadyTime, draft.Destination, draft.Recipient, draft.Notes);
-        int n = 1;
-        foreach (ParcelInput p in draft.Parcels)
-        {
-            request.Parcels.Add(new ParcelRecord($"P{n++}", p.Size, p.Flags, p.Description));
+            Parcel parcel = logged.Parcels[i];
+            request.Parcels.Add(new ParcelRecord(parcel.Label, draft.Parcels[i].Size, draft.Parcels[i].Flags, parcel.Description));
         }
 
         request.Events.Add(new EventView(Now, null, Status.Requested, Actor(loggedBy), loggedBy.Has(UserRole.Customer) ? "Request logged online" : "Request logged by phone"));
@@ -548,23 +547,16 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
     /// <inheritdoc/>
     public ViewerLevel LevelFor(UserSession? viewer, string reference)
     {
+        // Area 1 domain: AccessPolicy decides how much of the request this viewer may see.
         RequestRecord? r = Get(reference);
-        if (r is null)
+        DeliveryRequest? request = r is null ? null : ToDomain(r);
+        return AccessPolicy.LevelFor(request, viewer is not null, viewer?.IsStaff ?? false, viewer?.CustomerId) switch
         {
-            return ViewerLevel.None;
-        }
-
-        if (viewer is null)
-        {
-            return ViewerLevel.Recipient;
-        }
-
-        if (viewer.IsStaff)
-        {
-            return ViewerLevel.Staff;
-        }
-
-        return viewer.CustomerId == r.CustomerId ? ViewerLevel.Customer : ViewerLevel.None;
+            AccessLevel.Recipient => ViewerLevel.Recipient,
+            AccessLevel.Customer => ViewerLevel.Customer,
+            AccessLevel.Staff => ViewerLevel.Staff,
+            _ => ViewerLevel.None,
+        };
     }
 
     public (IReadOnlyList<DeliveryEvent> History, IReadOnlyList<Delivery.PaymentViewSnapshot> Payments)
@@ -789,6 +781,25 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
     }
 
     private static CustomerSummary ToSummary(CustomerRecord c) => new(c.Id, c.Name, c.Phone, c.Email);
+
+    // ---- Area 1 domain bridges: build the domain objects from the stored records.
+    private CustomerDirectory Directory() =>
+        new(_customers.Select(c => new Dms.Domain.Customer(c.Id, c.Name, c.Phone, c.Email)), _nextCustomer);
+
+    private static RequestForm ToForm(RequestDraft d) => new(
+        d.CustomerId,
+        new Address(d.Pickup.Street, d.Pickup.Suburb, d.Pickup.Postcode),
+        new Contact(d.PickupContact.Name, d.PickupContact.Phone),
+        d.ReadyTime,
+        new Address(d.Destination.Street, d.Destination.Suburb, d.Destination.Postcode),
+        new Contact(d.Recipient.Name, d.Recipient.Phone),
+        d.Parcels.Select(p => new ParcelEntry(p.Size.ToString(), Handling(p.Flags), p.Description)).ToList(),
+        d.Notes);
+
+    private static IReadOnlyList<string> Handling(ParcelHandling flags) =>
+        Enum.GetValues<ParcelHandling>().Where(f => f != ParcelHandling.None && flags.HasFlag(f)).Select(f => f.ToString()).ToList();
+
+    private static DeliveryRequest ToDomain(RequestRecord r) => new(r.Reference, r.CustomerId);
 
     private static string Actor(UserSession? by) => by is null ? SystemActor : by.DisplayName;
 
