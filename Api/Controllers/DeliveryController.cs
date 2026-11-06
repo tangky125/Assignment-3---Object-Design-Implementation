@@ -102,9 +102,16 @@ public sealed class DeliveryServiceAdapter : IDeliveryService
             return OperationResult.Fail("Parcels cannot be un-ticked once collected; tick the rest or record a failure instead.");
         }
 
+        // A5: the customer pays at pickup, so no parcel is ticked before the money is in.
+        if (!context.Delivery.IsPaymentSettled(context.AmountDue))
+        {
+            return OperationResult.Fail(Delivery.PaymentNeededForCollection);
+        }
+
         try
         {
-            context.Delivery.RecordParcelCollected(EventId(reference, $"collect-{parcel.Label}", by), Actor(by), Now, parcel);
+            context.Delivery.RecordParcelCollected(
+                EventId(reference, $"collect-{parcel.Label}", by), Actor(by), Now, parcel, context.AmountDue);
         }
         catch (InvalidOperationException ex)
         {
@@ -188,7 +195,8 @@ public sealed class DeliveryServiceAdapter : IDeliveryService
             return OperationResult.Fail($"Parcel {missing.Label} is not ticked as collected. Tick every parcel before confirming pickup.");
         }
 
-        return context.Delivery.Payments.Any(p => p.WasSuccessful)
+        // A5: a zero-amount delivery has nothing to collect, so it is never stranded here.
+        return context.Delivery.IsPaymentSettled(context.AmountDue)
             ? OperationResult.Ok($"Pickup confirmed. {reference} is now {context.Delivery.Status}. The customer has been notified.")
             : OperationResult.Fail("Payment has not been taken. Payment is taken at pickup, before the parcels leave.");
     }
@@ -204,9 +212,16 @@ public sealed class DeliveryServiceAdapter : IDeliveryService
             return notFound;
         }
 
+        // A5: payment is collected at pickup; without it the parcels do not leave (Task 5 subtask 3).
+        if (!context.Delivery.IsPaymentSettled(context.AmountDue))
+        {
+            return OperationResult.Fail(Delivery.PaymentNeededForHandover);
+        }
+
         try
         {
-            context.Delivery.RecordSuccessfulHandover(EventId(reference, "delivered", by), Actor(by), Now, receivedBy ?? string.Empty);
+            context.Delivery.RecordSuccessfulHandover(
+                EventId(reference, "delivered", by), Actor(by), Now, receivedBy ?? string.Empty, context.AmountDue);
         }
         catch (InvalidOperationException ex)
         {

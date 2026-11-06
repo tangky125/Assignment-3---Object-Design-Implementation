@@ -51,11 +51,18 @@ public static class IntegrationSelfTest
                 ?? throw new InvalidOperationException("Driver login failed.");
             Expect(restored.Deliveries.JobsFor(staff.StaffId).Any(x => x.Reference == job),
                 "job was missing from the driver's queue");
+            decimal amount = restored.Deliveries.AmountDue(job);
+            // A5: the customer pays at pickup, so nothing is ticked before the money is in.
+            if (amount > 0m)
+            {
+                Expect(!restored.Deliveries.SetParcelCollected(job, allocated.Parcels[0].ParcelId, true, driver).Succeeded,
+                    "a parcel was ticked before the customer paid");
+            }
+
+            Expect(restored.Deliveries.TakeCash(job, amount, driver).Successful, "cash attempt failed");
             foreach (ParcelView parcel in allocated.Parcels)
                 Expect(restored.Deliveries.SetParcelCollected(job, parcel.ParcelId, true, driver).Succeeded,
                     "parcel collection failed");
-            decimal amount = restored.Deliveries.AmountDue(job);
-            Expect(restored.Deliveries.TakeCash(job, amount, driver).Successful, "cash attempt failed");
             Expect(restored.Deliveries.RecordDelivered(job, "Recipient", driver).Succeeded,
                 "handover failed");
             restoredRegistry.SyncAll();

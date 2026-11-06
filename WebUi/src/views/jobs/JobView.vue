@@ -32,6 +32,10 @@ const job = useAsync(() => jobApi.get(reference))
 const detail = computed(() => job.data.value?.detail ?? null)
 const due = computed(() => job.data.value?.amountDue ?? 0)
 const paid = computed(() => detail.value?.payments.find((p) => p.successful) ?? null)
+// A5: money changes hands at pickup. Until a payment succeeds (a declined card does not count)
+// the parcels are not ticked and the delivery is not handed over. A zero-amount job is never blocked.
+const paymentRequired = computed(() => due.value > 0 && paid.value === null)
+const canTickParcels = computed(() => detail.value?.status === 'Scheduled' && !paymentRequired.value)
 const failedAttempts = computed(() => detail.value?.payments.filter((p) => !p.successful) ?? [])
 const ticked = computed(() => detail.value?.parcels.filter((p) => p.collected).length ?? 0)
 const needsSignature = computed(
@@ -92,8 +96,10 @@ async function run(call: () => Promise<OperationResult>): Promise<void> {
   }
 }
 
-async function toggleParcel(parcelId: string, collected: boolean): Promise<void> {
-  await run(() => jobApi.setCollected(reference, parcelId, collected))
+async function toggleParcel(parcelId: string, box: HTMLInputElement): Promise<void> {
+  await run(() => jobApi.setCollected(reference, parcelId, box.checked))
+  // The server is the authority: put the box back if it refused (e.g. unpaid, or already collected).
+  box.checked = detail.value?.parcels.find((p) => p.parcelId === parcelId)?.collected ?? false
 }
 
 async function takeCash(): Promise<void> {
@@ -202,14 +208,21 @@ async function failure(): Promise<void> {
 
       <section class="card" aria-labelledby="parcels-title">
         <h2 id="parcels-title">Parcels ({{ ticked }} of {{ detail.parcels.length }} collected)</h2>
+        <p
+          v-if="paymentRequired && detail.status === 'Scheduled'"
+          class="muted small hint"
+          data-testid="payment-first-hint"
+        >
+          Take payment first: the customer pays at pickup, before any parcel is ticked.
+        </p>
         <ul class="checklist">
           <li v-for="(p, i) in detail.parcels" :key="p.parcelId" data-testid="job-parcel">
             <label class="choice">
               <input
                 type="checkbox"
                 :checked="p.collected"
-                :disabled="detail.status !== 'Scheduled' || busy"
-                @change="toggleParcel(p.parcelId, ($event.target as HTMLInputElement).checked)"
+                :disabled="!canTickParcels || busy"
+                @change="toggleParcel(p.parcelId, $event.target as HTMLInputElement)"
               />
               <span>
                 <strong>Parcel {{ i + 1 }}: {{ p.size }}</strong>
@@ -237,6 +250,16 @@ async function failure(): Promise<void> {
         <p v-for="(f, i) in failedAttempts" :key="i" class="muted small">
           Earlier attempt: {{ f.method }} {{ f.outcome.toLowerCase() }} at {{ shortWhen(f.at) }}
         </p>
+        <!-- A5: payment is offered in both stages, so a job that is already Collected without
+             a payment can still be paid for (legacy or API-created state) instead of being stranded. -->
+        <div v-if="paymentRequired" class="row gap">
+          <button type="button" class="btn btn-secondary" data-testid="take-cash" @click="open('cash')">
+            Take cash
+          </button>
+          <button type="button" class="btn btn-secondary" data-testid="take-card" @click="open('card')">
+            Take card
+          </button>
+        </div>
       </section>
     </div>
 
@@ -244,19 +267,19 @@ async function failure(): Promise<void> {
       <h2 id="do-title">Record what happened</h2>
       <div class="row">
         <template v-if="detail.status === 'Scheduled'">
-          <button v-if="!paid" type="button" class="btn btn-secondary" @click="open('cash')">
-            Take cash
-          </button>
-          <button v-if="!paid" type="button" class="btn btn-secondary" @click="open('card')">
-            Take card
-          </button>
           <button type="button" class="btn" @click="open('confirm')">Confirm pickup is complete</button>
           <button type="button" class="btn btn-secondary" @click="open('failure')">
             Record a failed pickup
           </button>
         </template>
         <template v-else>
-          <button type="button" class="btn" @click="open('delivered')">
+          <button
+            type="button"
+            class="btn"
+            :disabled="busy || paymentRequired"
+            data-testid="record-delivered"
+            @click="open('delivered')"
+          >
             Record the delivery as completed
           </button>
           <button type="button" class="btn btn-secondary" @click="open('failure')">
@@ -264,6 +287,9 @@ async function failure(): Promise<void> {
           </button>
         </template>
       </div>
+      <p v-if="detail.status !== 'Scheduled' && paymentRequired" class="muted small" data-testid="pay-before-handover">
+        Payment must be collected before the parcels are handed over.
+      </p>
 
       <!-- Cash -->
       <form v-if="panel === 'cash'" class="panel" novalidate @submit.prevent="takeCash">
@@ -403,6 +429,10 @@ async function failure(): Promise<void> {
 
 .gap {
   margin-top: 1.25rem;
+}
+
+.hint {
+  margin: 0 0 0.5rem;
 }
 
 .checklist {

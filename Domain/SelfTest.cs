@@ -14,6 +14,7 @@ public static class SelfTest
         CheckReplay();
         CheckFailureLoop();
         CheckGuards();
+        CheckPaymentBeforeCollection();
     }
 
     // a. refusal table
@@ -165,6 +166,62 @@ public static class SelfTest
             Throws<ArgumentException>(
                 () => blankReason.RecordFailedAttempt(Guid.NewGuid(), "driver", At, "   "),
                 "reason is required"));
+    }
+
+    // g. A5: money changes hands at pickup, before the parcels leave
+    private static void CheckPaymentBeforeCollection()
+    {
+        const decimal Due = 42.50m;
+        (DeliveryRequest request, Delivery delivery, _) = NewDelivery("P1");
+        delivery.RecordAllocation(new DeliveryStaffProfile("S-1", "Ana"), Guid.NewGuid(), "coord", At);
+
+        Check("a parcel cannot be ticked before the customer pays",
+            Throws<InvalidOperationException>(
+                () => delivery.RecordParcelCollected(Guid.NewGuid(), "driver", At, request.Parcels[0], Due),
+                "Take payment before ticking the parcels"));
+        Check("a refused tick leaves the parcel unticked and the status Scheduled",
+            !request.Parcels[0].IsCollected && delivery.Status == Status.Scheduled);
+
+        Payment declined = delivery.RecordPaymentAttempt(
+            Guid.NewGuid(), "driver", At, new CardPayment(new PaymentGateway(), "0000123456789012"), Due);
+        Check("a declined card does not unlock collection",
+            declined.Outcome == PaymentOutcome.Declined
+            && Throws<InvalidOperationException>(
+                () => delivery.RecordParcelCollected(Guid.NewGuid(), "driver", At, request.Parcels[0], Due),
+                "Take payment before ticking the parcels"));
+
+        delivery.RecordPaymentAttempt(Guid.NewGuid(), "driver", At, new CashPayment(), Due);
+        delivery.RecordParcelCollected(Guid.NewGuid(), "driver", At, request.Parcels[0], Due);
+        Check("cash success unlocks collection", delivery.Status == Status.Collected);
+        Check("handover after payment moves status to Delivered", HandedOver(delivery, Due) && delivery.Status == Status.Delivered);
+
+        (DeliveryRequest unpaidRequest, Delivery unpaid, _) = NewDelivery("P1");
+        unpaid.RecordAllocation(new DeliveryStaffProfile("S-2", "Bo"), Guid.NewGuid(), "coord", At);
+        unpaid.RecordParcelCollected(Guid.NewGuid(), "driver", At, unpaidRequest.Parcels[0]);
+        Check("handover of an unpaid delivery is refused",
+            Throws<InvalidOperationException>(
+                () => unpaid.RecordSuccessfulHandover(Guid.NewGuid(), "driver", At, "Customer", Due),
+                "Payment must be collected before the parcels are handed over"));
+        Check("a refused handover leaves the delivery Collected", unpaid.Status == Status.Collected);
+
+        (DeliveryRequest freeRequest, Delivery free, _) = NewDelivery("P1");
+        free.RecordAllocation(new DeliveryStaffProfile("S-3", "Cy"), Guid.NewGuid(), "coord", At);
+        free.RecordParcelCollected(Guid.NewGuid(), "driver", At, freeRequest.Parcels[0], 0m);
+        Check("a zero-amount job needs no payment and is not stranded",
+            HandedOver(free, 0m) && free.Status == Status.Delivered);
+    }
+
+    private static bool HandedOver(Delivery delivery, decimal amountDue)
+    {
+        try
+        {
+            delivery.RecordSuccessfulHandover(Guid.NewGuid(), "driver", At, "Customer", amountDue);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private static (DeliveryRequest Request, Delivery Delivery, CountingObserver Observer) NewDelivery(

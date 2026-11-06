@@ -23,7 +23,7 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
         "sam     - owner and office staff",
         "ben     - delivery staff (works 07:00-19:00)",
         "ava     - delivery staff (works 08:00-20:00)",
-        "raj     - delivery staff (works 15:00-22:00)",
+        "raj     - delivery staff (works 24/7 for testing)",
     };
 
     private const string SystemActor = "System";
@@ -956,7 +956,8 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
         _staff.Add(new StaffRecord("S002", "Sam Taylor", false, TimeOnly.MinValue, TimeOnly.MaxValue));
         _staff.Add(new StaffRecord("S003", "Ben Nguyen", true, new TimeOnly(7, 0), new TimeOnly(19, 0)));
         _staff.Add(new StaffRecord("S004", "Ava Patel", true, new TimeOnly(8, 0), new TimeOnly(20, 0)));
-        _staff.Add(new StaffRecord("S005", "Raj Singh", true, new TimeOnly(15, 0), new TimeOnly(22, 0)));
+        // Testing: raj is on duty around the clock, so any pickup/delivery window can be allocated to him.
+        _staff.Add(new StaffRecord("S005", "Raj Singh", true, TimeOnly.MinValue, TimeOnly.MaxValue));
 
         string pw = Hash("demo123");
         _users.Add(new UserRecord("jane", pw, "Jane Citizen", new HashSet<UserRole> { UserRole.Customer }, "C001", null));
@@ -990,7 +991,7 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
         r3.Parcels.Add(new ParcelRecord("P1", SizeBand.Small, ParcelHandling.None, "Documents"));
         SeedQuote(r3, 22m, tomorrow.AddHours(15), now.AddHours(-25), "Olivia Brown");
 
-        // 0004: Acme, accepted and waiting for a staff member (Ben is free, Ava is busy, Raj is off).
+        // 0004: Acme, accepted and waiting for a staff member (Ben and Raj are free, Ava is busy).
         RequestRecord r4 = SeedRequest("C002", now.AddHours(-27), "Olivia Brown", acme, acmeDesk, tomorrow.AddHours(10), swanston, new ContactInput("Hotel concierge", "03 9650 1234"), null);
         r4.Parcels.Add(new ParcelRecord("P1", SizeBand.Medium, ParcelHandling.Fragile, "Table flowers"));
         SeedQuote(r4, 30m, tomorrow.AddHours(10), now.AddHours(-20), "Olivia Brown");

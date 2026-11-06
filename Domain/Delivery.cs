@@ -19,6 +19,31 @@ public class Delivery
     public Delivery(DeliveryRequest request, StatusLifecycle lifecycle)
     { (_request, _lifecycle) = (request, lifecycle); }
 
+    // A5: the customer pays at pickup, before the parcels leave. One wording, so the API, the
+    // driver screen and the selftest all say the same thing.
+    /// <summary>Refusal text when parcels are ticked before the customer has paid.</summary>
+    public const string PaymentNeededForCollection =
+        "Take payment before ticking the parcels. The customer pays at pickup.";
+
+    /// <summary>Refusal text when an unpaid delivery is handed over.</summary>
+    public const string PaymentNeededForHandover =
+        "Payment must be collected before the parcels are handed over.";
+
+    /// <summary>
+    /// True when nothing is owed, or a successful payment is already held (A5). A zero-amount
+    /// delivery is never stranded: there is nothing to collect, so the rule is satisfied.
+    /// </summary>
+    /// <param name="amountDue">What the customer owes, supplied by the caller (Area 2's quote).</param>
+    public bool IsPaymentSettled(decimal amountDue) => amountDue <= 0m || _payments.Any(p => p.WasSuccessful);
+
+    private void RequirePayment(decimal amountDue, string message)
+    {
+        if (!IsPaymentSettled(amountDue))
+        {
+            throw new InvalidOperationException(message);
+        }
+    }
+
     // ---- queries ----
     public DeliveryRequest Request => _request;
     public Status Status => _status;
@@ -49,7 +74,9 @@ public class Delivery
     // ---- Task 5 commands (the four "Records…" rows of CRC Card 1) ----
 
     // 1. Collection, checked off parcel by parcel (variant 4a); status flips only when ALL are in
-    public void RecordParcelCollected(Guid eventId, string actorId, DateTimeOffset at, Parcel parcel)
+    /// <param name="amountDue">What the customer owes; when &gt; 0 a successful payment is required (A5).</param>
+    public void RecordParcelCollected(Guid eventId, string actorId, DateTimeOffset at, Parcel parcel,
+                                      decimal amountDue = 0m)
     {
         if (_seen.Contains(eventId))
         {
@@ -61,6 +88,7 @@ public class Delivery
         if (!_request.Parcels.Contains(parcel))
             throw new InvalidOperationException("Parcel does not belong to this delivery.");
         if (parcel.IsCollected) return;
+        RequirePayment(amountDue, PaymentNeededForCollection); // A5: no parcel leaves before the money
         parcel.MarkCollected();                               // Reuben's Parcel owns its flag
         if (_request.Parcels.All(p => p.IsCollected))
         {
@@ -101,13 +129,16 @@ public class Delivery
     }
 
     // 3. Successful hand-over
-    public void RecordSuccessfulHandover(Guid eventId, string actorId, DateTimeOffset at, string receivedBy)
+    /// <param name="amountDue">What the customer owes; when &gt; 0 a successful payment is required (A5).</param>
+    public void RecordSuccessfulHandover(Guid eventId, string actorId, DateTimeOffset at, string receivedBy,
+                                         decimal amountDue = 0m)
     {
         if (_seen.Contains(eventId))
         {
             return;
         }
 
+        RequirePayment(amountDue, PaymentNeededForHandover); // A5: no parcels leave before the money
         Move(Status.Delivered, $"Handed over to {receivedBy}", actorId, at, eventId);
         _seen.Add(eventId);                                   // memory committed only after success (DA9)
     }

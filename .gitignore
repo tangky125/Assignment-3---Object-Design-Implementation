@@ -3,3 +3,4 @@ obj/
 WebUi/node_modules/
 *.tsbuildinfo
 # wwwroot/ holds the built UI and is kept in git so `dotnet run` works without Node.js.
+Data/*.json
