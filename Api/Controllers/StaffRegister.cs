@@ -32,6 +32,10 @@ public sealed class StaffRegister
             if (!staff.WorksDuring(start, end))
                 return new StaffOption(staff.StaffId, staff.StaffName, false,
                     $"Outside shift ({staff.ShiftStart:HH:mm}-{staff.ShiftEnd:HH:mm})");
+            // An always-on account (00:00-23:59, e.g. for testing) is never treated as double-booked,
+            // so any job can be given to it at any time on any day.
+            if (staff.IsAlwaysOn)
+                return new StaffOption(staff.StaffId, staff.StaffName, true, "Free for both windows");
             RequestDetail? clash = activeJobs.FirstOrDefault(j =>
                 j!.AllocatedStaffId == staff.StaffId &&
                 j.CurrentQuote!.PickupWindow.Start < end && start < j.CurrentQuote.DeliveryWindow.End);

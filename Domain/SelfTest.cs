@@ -15,6 +15,7 @@ public static class SelfTest
         CheckFailureLoop();
         CheckGuards();
         CheckPaymentBeforeCollection();
+        CheckAlwaysOnShift();
     }
 
     // a. refusal table
@@ -209,6 +210,28 @@ public static class SelfTest
         free.RecordParcelCollected(Guid.NewGuid(), "driver", At, freeRequest.Parcels[0], 0m);
         Check("a zero-amount job needs no payment and is not stranded",
             HandedOver(free, 0m) && free.Status == Status.Delivered);
+    }
+
+    // h. availability window: an always-on profile (00:00-23:59) also covers a span that crosses midnight
+    private static void CheckAlwaysOnShift()
+    {
+        var alwaysOn = new DeliveryStaffProfile("S-9", "Raj", TimeOnly.MinValue, TimeOnly.MaxValue);
+        var dayShift = new DeliveryStaffProfile("S-8", "Ben", new TimeOnly(7, 0), new TimeOnly(19, 0));
+        DateTime lateStart = new(2026, 3, 11, 21, 0, 0);      // pick-up opens 21:00
+        DateTime lateEnd = new(2026, 3, 12, 1, 0, 0);         // delivery closes 01:00 next day
+
+        Check("an always-on profile covers a window that crosses midnight",
+            alwaysOn.WorksDuring(lateStart, lateEnd));
+        Check("an always-on profile reports itself as always on, a day shift does not",
+            alwaysOn.IsAlwaysOn && !dayShift.IsAlwaysOn);
+        Check("a day shift does not cover a window that crosses midnight",
+            !dayShift.WorksDuring(lateStart, lateEnd));
+        Check("an always-on profile still refuses an empty window",
+            !alwaysOn.WorksDuring(lateEnd, lateStart));
+        Check("an always-on profile refuses a window longer than a day",
+            !alwaysOn.WorksDuring(lateStart, lateStart.AddDays(1).AddMinutes(1)));
+        Check("a day shift still covers its own hours", dayShift.WorksDuring(
+            new DateTime(2026, 3, 11, 9, 0, 0), new DateTime(2026, 3, 11, 18, 0, 0)));
     }
 
     private static bool HandedOver(Delivery delivery, decimal amountDue)

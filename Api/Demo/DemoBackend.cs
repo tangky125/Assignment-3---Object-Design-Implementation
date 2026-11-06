@@ -829,23 +829,35 @@ public sealed class DemoBackend : IAuthService, IRequestService, IQuoteService, 
             return (false, "Has left the business");
         }
 
-        bool sameDay = start.Date == end.Date;
-        if (!sameDay || TimeOnly.FromDateTime(start) < s.From || TimeOnly.FromDateTime(end) > s.To)
+        // An always-on profile (00:00-23:59, e.g. a testing account) covers any span up to a day
+        // long, even one that crosses midnight; other profiles must stay inside one calendar day.
+        bool alwaysOn = s.From == TimeOnly.MinValue && s.To == TimeOnly.MaxValue;
+        bool onDuty = alwaysOn
+            ? end > start && end - start <= TimeSpan.FromDays(1)
+            : start.Date == end.Date
+                && TimeOnly.FromDateTime(start) >= s.From
+                && TimeOnly.FromDateTime(end) <= s.To;
+        if (!onDuty)
         {
             return (false, $"Not working then (works {s.From:HH:mm}-{s.To:HH:mm})");
         }
 
-        RequestRecord? clash = _requests.FirstOrDefault(o =>
-            o != job
-            && o.StaffId == s.Id
-            && o.Status is Status.Scheduled or Status.Collected
-            && o.CurrentQuote is not null
-            && o.CurrentQuote.PickupWindow.Start < end
-            && start < o.CurrentQuote.DeliveryWindow.End);
-        if (clash is not null)
+        // An always-on account (00:00-23:59, e.g. for testing) is available at any time on any day
+        // and is never treated as double-booked, so it skips the clash check below.
+        if (!alwaysOn)
         {
-            TimeWindowView p = clash.CurrentQuote!.PickupWindow;
-            return (false, $"Busy with {clash.Reference} ({p.Start:HH:mm}-{clash.CurrentQuote.DeliveryWindow.End:HH:mm})");
+            RequestRecord? clash = _requests.FirstOrDefault(o =>
+                o != job
+                && o.StaffId == s.Id
+                && o.Status is Status.Scheduled or Status.Collected
+                && o.CurrentQuote is not null
+                && o.CurrentQuote.PickupWindow.Start < end
+                && start < o.CurrentQuote.DeliveryWindow.End);
+            if (clash is not null)
+            {
+                TimeWindowView p = clash.CurrentQuote!.PickupWindow;
+                return (false, $"Busy with {clash.Reference} ({p.Start:HH:mm}-{clash.CurrentQuote.DeliveryWindow.End:HH:mm})");
+            }
         }
 
         return (true, "Free for both windows");
